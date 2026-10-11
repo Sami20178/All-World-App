@@ -22,3 +22,5 @@ jobs:
         run: npm install
       - name: Check server syntax
         run: npm run check
+      - name: Run API smoke tests
+        run: npm test
