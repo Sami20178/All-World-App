@@ -16,6 +16,7 @@ Passwords are hashed with bcrypt. Login and registration are rate-limited. Sessi
 2. Run `npm install`.
 3. Copy `.env.example` to `.env` and set values for your environment.
 4. Run `npm start`.
+5. Run `npm test` to start an isolated temporary server and exercise health, validation, registration, login/logout, sessions and the protected account endpoint. The test uses a temporary data directory and removes it afterward.
 
 For local frontend development, set `APP_ORIGIN=http://localhost:5500` and serve the source-code folder on port 5500. Set `API_BASE_URL` in frontend `app.js` to the API address.
 
