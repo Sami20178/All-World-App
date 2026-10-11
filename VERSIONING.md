@@ -17,7 +17,7 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Frontend enthält ein Android-WebView-Projekt; GitHub Actions hat die Debug-APK im aktuellen Lauf [#38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839) gebaut. Der Workflow hat APK-Signatur und gebündelte Web-Assets erfolgreich geprüft; eine Geräteinstallation und Kernfunktionstests sind noch offen. Der Build ist eine Debug-APK, keine Produktionssignierung.
 - Build-Workflow: [Frontend Android Actions #38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839), Commit `0a42f6f2a78147b4795df022f81c1ceed0fde7bd`.
 - Der Server stellt Authentifizierungs-Endpunkte bereit, muss aber auf einer erreichbaren HTTPS-Adresse betrieben und passend zur App konfiguriert werden.
-- Server-Validierung erfolgreich: [Lauf #38121935678](https://github.com/Sami20178/All-World-App/actions/runs/38121935678), Commit `40c2e87aa0279d6b1c361129d06a43c8137e8342`.
+- Server-Validierung mit Syntaxcheck und neuen API-Smoke-Tests erfolgreich: [Lauf #38126297531](https://github.com/Sami20178/All-World-App/actions/runs/38126297531), Commit `be57c4cde622e3271ac9c8e1b5f290b83b69d7e3`. Abgedeckt sind Health, Eingabevalidierung, Registrierung, Duplikatschutz, Sitzung, geschützter Account-Endpunkt, Login und Logout. Das ist kein Produktionstest.
 - GitHub-Releases in diesem Repository: keine veröffentlicht.
 - Release-Status: noch nicht veröffentlicht.
 - APK: wird ausschließlich im Frontend-Repository aus dem Android-Projekt gebaut; erst nach Installations-/Kernfunktionstests als echtes Release-Asset verlinken. Der Server selbst ist keine APK.
