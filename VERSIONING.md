@@ -14,10 +14,10 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 ## First Classic 0.0.0.0
 
 - Zweck: erste gemeinsame App-/Server-Versionslinie.
-- Frontend enthält ein Android-WebView-Projekt; GitHub Actions hat die Debug-APK erfolgreich gebaut und als temporäres Actions-Artefakt hochgeladen. Sie ist noch nicht auf einem Gerät installiert/getestet und nicht produktionssigniert.
-- Build-Workflow: [Frontend Android Actions #38121263261](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121263261).
+- Frontend enthält ein Android-WebView-Projekt; GitHub Actions hat die Debug-APK im aktuellen Lauf [#38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839) gebaut. Der Workflow hat APK-Signatur und gebündelte Web-Assets erfolgreich geprüft; eine Geräteinstallation und Kernfunktionstests sind noch offen. Der Build ist eine Debug-APK, keine Produktionssignierung.
+- Build-Workflow: [Frontend Android Actions #38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839), Commit `0a42f6f2a78147b4795df022f81c1ceed0fde7bd`.
 - Der Server stellt Authentifizierungs-Endpunkte bereit, muss aber auf einer erreichbaren HTTPS-Adresse betrieben und passend zur App konfiguriert werden.
-- Server-Validierung: vorhandener Workflow `.github/workflows/validate.yml`; den neuesten Lauf vor einer Veröffentlichung erneut prüfen.
+- Server-Validierung erfolgreich: [Lauf #38121935678](https://github.com/Sami20178/All-World-App/actions/runs/38121935678), Commit `40c2e87aa0279d6b1c361129d06a43c8137e8342`.
 - GitHub-Releases in diesem Repository: keine veröffentlicht.
 - Release-Status: noch nicht veröffentlicht.
 - APK: wird ausschließlich im Frontend-Repository aus dem Android-Projekt gebaut; erst nach Installations-/Kernfunktionstests als echtes Release-Asset verlinken. Der Server selbst ist keine APK.
