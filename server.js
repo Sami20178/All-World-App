@@ -71,7 +71,7 @@ const OAUTH_UNSUPPORTED_GENERIC = new Set(["apple","supercell"]);
 let OAUTH_CONFIG = {};
 try { OAUTH_CONFIG = JSON.parse(process.env.OAUTH_PROVIDERS_JSON || "{}"); if (!OAUTH_CONFIG || typeof OAUTH_CONFIG !== "object" || Array.isArray(OAUTH_CONFIG)) OAUTH_CONFIG = {}; } catch { console.error("OAUTH_PROVIDERS_JSON must be valid JSON; social login is disabled."); OAUTH_CONFIG = {}; }
 function validOAuthConfig(slug, cfg) {
- if (!/^[a-z0-9_-]{2,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
+ if (!/^[a-z0-9_-]{1,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
  if (!cfg.clientId || !cfg.clientSecret || !cfg.authorizeUrl || !cfg.tokenUrl || !cfg.userInfoUrl) return false;
  for (const key of ["authorizeUrl","tokenUrl","userInfoUrl"]) { try { const u = new URL(cfg[key]); if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return false; } catch { return false; } }
  return true;
@@ -83,6 +83,11 @@ function oauthRedirectUri(slug) {
 }
 function readProfilePath(profile, pathValue) {
  return String(pathValue || "sub").split(".").reduce((value, key) => value == null ? undefined : value[key], profile);
+}
+function createPkcePair() {
+ const verifier = crypto.randomBytes(32).toString("base64url");
+ const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+ return { verifier, challenge };
 }
 function oauthSafeRedirect(res, query) {
  const url = new URL(APP_ORIGIN);
@@ -100,9 +105,11 @@ app.get("/api/auth/oauth/:provider", (req,res,next) => {
  let redirectUri; try { redirectUri = oauthRedirectUri(slug); } catch(e) { return res.status(503).json({error:e.message}); }
  const state = crypto.randomBytes(32).toString("hex");
  const params = new URLSearchParams({response_type:"code",client_id:cfg.clientId,redirect_uri:redirectUri,scope:Array.isArray(cfg.scopes)?cfg.scopes.join(" "):(cfg.scopes||"openid profile email"),state});
+ const pkce = cfg.pkce === true ? createPkcePair() : null;
+ if (pkce) { params.set("code_challenge",pkce.challenge); params.set("code_challenge_method","S256"); }
  if (cfg.audience) params.set("audience",cfg.audience);
  if (cfg.extraAuthorizeParams && typeof cfg.extraAuthorizeParams === "object") for (const [k,v] of Object.entries(cfg.extraAuthorizeParams)) params.set(k,String(v));
- req.session.oauthFlow = {provider:slug,state,linkUserId:req.session.userId || null,createdAt:Date.now()};
+ req.session.oauthFlow = {provider:slug,state,codeVerifier:pkce?.verifier || null,linkUserId:req.session.userId || null,createdAt:Date.now()};
  req.session.save(error => { if(error)return next(error); const target = new URL(cfg.authorizeUrl); for(const [k,v] of params) target.searchParams.set(k,v); res.redirect(302,target.toString()); });
 });
 app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
@@ -112,6 +119,7 @@ app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
   if(!flow||flow.provider!==slug||typeof req.query.state!=="string"||Buffer.byteLength(String(flow.state))!==Buffer.byteLength(String(req.query.state))||!crypto.timingSafeEqual(Buffer.from(String(flow.state)),Buffer.from(String(req.query.state)))||Date.now()-flow.createdAt>10*60*1000) return oauthSafeRedirect(res,{oauth_error:"invalid_state"});
   if(req.query.error||typeof req.query.code!=="string") return oauthSafeRedirect(res,{oauth_error:"provider_denied"});
   const redirectUri=oauthRedirectUri(slug), tokenBody=new URLSearchParams({grant_type:"authorization_code",code:req.query.code,redirect_uri:redirectUri,client_id:cfg.clientId,client_secret:cfg.clientSecret});
+  if (flow.codeVerifier) tokenBody.set("code_verifier",flow.codeVerifier);
   const tokenHeaders={"Content-Type":"application/x-www-form-urlencoded","Accept":"application/json"};
   if(cfg.clientAuthMethod==="basic"){tokenHeaders.Authorization="Basic "+Buffer.from(cfg.clientId+":"+cfg.clientSecret).toString("base64");tokenBody.delete("client_id");tokenBody.delete("client_secret");}
   const tokenResponse=await fetch(cfg.tokenUrl,{method:"POST",headers:tokenHeaders,body:tokenBody,signal:AbortSignal.timeout(12000)});

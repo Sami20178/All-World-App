@@ -20,7 +20,7 @@ async function main() {
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
-    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir },
+    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", API_PUBLIC_URL:baseUrl, SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir, OAUTH_PROVIDERS_JSON:JSON.stringify({roblox:{clientId:"test-roblox",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/roblox",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"openid profile",idField:"sub",nameField:"preferred_username",pkce:true},x:{clientId:"test-x",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/x",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"users.read tweet.read offline.access",idField:"data.id",nameField:"data.username",clientAuthMethod:"basic",pkce:true}}) },
     stdio:["ignore","pipe","pipe"]
   });
   let logs="";
@@ -40,6 +40,17 @@ async function main() {
     for (const id of ["discord","spotify","gitlab","twitch"]) {
       assert.ok(providerList.some(provider=>provider.id===id&&!provider.enabled), id+" should be listed but disabled without server credentials");
       assert.equal((await request("/api/auth/oauth/"+id)).status,503, id+" should not pretend to work without credentials");
+    }
+
+    for (const id of ["roblox","x"]) {
+      assert.ok(providerList.some(provider=>provider.id===id&&provider.enabled), id+" should enable when valid server config is supplied");
+      const start=await request("/api/auth/oauth/"+id,{redirect:"manual"});
+      assert.equal(start.status,302,id+" should redirect to the configured provider");
+      assert.ok(cookieFrom(start),"OAuth flow should be bound to a session cookie");
+      const authUrl=new URL(start.headers.get("location"));
+      assert.equal(authUrl.searchParams.get("code_challenge_method"),"S256",id+" should use PKCE S256");
+      assert.match(authUrl.searchParams.get("code_challenge")||"",/^[A-Za-z0-9_-]{43}$/,"PKCE challenge should be base64url SHA-256");
+      assert.equal(authUrl.searchParams.get("state")?.length,64,"OAuth state should be random and session-bound");
     }
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
