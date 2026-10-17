@@ -32,7 +32,7 @@ if (NODE_ENV === "production") {
 if (NODE_ENV === "production") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use((req,res,next)=>{ const origin=req.get("origin"); if (origin && origin !== APP_ORIGIN) return res.status(403).json({error:"Origin nicht erlaubt."}); next(); });
+app.use((req,res,next)=>{ if (!["POST","PUT","PATCH","DELETE"].includes(req.method)) return next(); if (req.path === "/api/auth/oauth/apple/callback") return next(); const origin=req.get("origin"); if ((origin && origin !== APP_ORIGIN) || (NODE_ENV === "production" && !origin)) return res.status(403).json({error:"Origin nicht erlaubt."}); next(); });
 app.use(cors({ origin(origin, cb) { if (!origin || origin === APP_ORIGIN) return cb(null, true); return cb(null, false); }, credentials: true, methods: ["GET","POST","DELETE","OPTIONS"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
