@@ -61,7 +61,7 @@ async function main() {
     assert.equal((await request("/api/health")).status,200);
     const crossSiteMutation=await request("/api/auth/register",{method:"POST",headers:{"content-type":"application/json","origin":"https://untrusted.example"},body:JSON.stringify({username:"csrf_test_user",password:"Test-password-2026!"})});
     assert.equal(crossSiteMutation.status,403,"state-changing requests from an untrusted browser origin must be rejected");
-    const applePost=await request("/api/auth/oauth/apple/callback",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded","origin":"https://appleid.apple.com"},body:"state=apple-callback-test"});
+    let applePost; try { applePost=await request("/api/auth/oauth/apple/callback",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded","origin":"https://appleid.apple.com"},body:"state=apple-callback-test"}); } catch(error) { throw new Error("Apple callback request failed; API exit="+child.exitCode+" logs="+logs+" cause="+error.message); }
     assert.equal(applePost.status,303,"Apple's form_post callback must pass the origin guard and be checked by OAuth state");
     const providerResponse=await request("/api/auth/providers");
     assert.equal(providerResponse.status,200);
