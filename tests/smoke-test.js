@@ -105,7 +105,7 @@ async function main() {
     } finally { database.close(); }
     assert.equal((await jsonRequest("/api/auth/login",{username:secondName,password:secondPassword})).status,401,"deleted account must no longer be able to log in");
     assert.equal((await jsonRequest("/api/auth/login",{username,password})).status,200,"other linked account should remain usable");
-    assert.equal((await request("/api/auth/me",{headers:{cookie:secondCookie}})).status,200,"an old session for a still-existing account should remain valid");
+    assert.equal((await (await request("/api/auth/me",{headers:{cookie:secondCookie}})).json()).user,null,"deleted account session must no longer authenticate");
 
     console.log("Passed: SQLite persistence, bcrypt, registration, duplicate protection, login/logout, durable sessions, account linking/switching, password-confirmed deletion, user-data cleanup, link cleanup and deleted-account login denial.");
   } finally {
