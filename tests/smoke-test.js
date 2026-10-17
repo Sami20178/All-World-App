@@ -34,6 +34,13 @@ async function main() {
     for(let i=0;i<80;i++){if(child.exitCode!==null)throw new Error("API process exited before ready. "+logs);try{const r=await request("/api/health");if(r.ok&&(await r.json()).service==="all-world-api"){ready=true;break;}}catch(_){}await delay(100);}
     assert.equal(ready,true,"API did not become ready. "+logs);
     assert.equal((await request("/api/health")).status,200);
+    const providerResponse=await request("/api/auth/providers");
+    assert.equal(providerResponse.status,200);
+    const providerList=(await providerResponse.json()).providers;
+    for (const id of ["discord","spotify","gitlab","twitch"]) {
+      assert.ok(providerList.some(provider=>provider.id===id&&!provider.enabled), id+" should be listed but disabled without server credentials");
+      assert.equal((await request("/api/auth/oauth/"+id)).status,503, id+" should not pretend to work without credentials");
+    }
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
     const username="ci_"+Date.now().toString(36), password="Test-password-2026!";

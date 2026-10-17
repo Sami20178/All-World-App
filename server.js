@@ -117,7 +117,10 @@ app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
   const tokenResponse=await fetch(cfg.tokenUrl,{method:"POST",headers:tokenHeaders,body:tokenBody,signal:AbortSignal.timeout(12000)});
   const tokenData=await tokenResponse.json().catch(()=>({}));
   if(!tokenResponse.ok||typeof tokenData.access_token!=="string") throw new Error("Token-Austausch beim Anbieter fehlgeschlagen.");
-  const userInfoResponse=await fetch(cfg.userInfoUrl,{headers:{Authorization:"Bearer "+tokenData.access_token,Accept:"application/json"},signal:AbortSignal.timeout(12000)});
+  const userInfoHeaders={Authorization:"Bearer "+tokenData.access_token,Accept:"application/json"};
+  if(cfg.clientIdHeader) userInfoHeaders[String(cfg.clientIdHeader)]=cfg.clientId;
+  if(cfg.userInfoHeaders&&typeof cfg.userInfoHeaders==="object") for(const [key,value] of Object.entries(cfg.userInfoHeaders)) userInfoHeaders[key]=String(value);
+  const userInfoResponse=await fetch(cfg.userInfoUrl,{headers:userInfoHeaders,signal:AbortSignal.timeout(12000)});
   const userInfo=await userInfoResponse.json().catch(()=>({}));
   if(!userInfoResponse.ok) throw new Error("Profildaten beim Anbieter konnten nicht gelesen werden.");
   const profile=cfg.userInfoPath ? readProfilePath(userInfo,cfg.userInfoPath) : userInfo;
