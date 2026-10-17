@@ -19,7 +19,16 @@ const DATABASE_FILE = process.env.DATABASE_FILE || path.join(DATA_DIR, "all-worl
 const LEGACY_USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_SAME_SITE = process.env.COOKIE_SAME_SITE || (NODE_ENV === "production" ? "none" : "lax");
-if (NODE_ENV === "production" && SESSION_SECRET.length < 32) throw new Error("Set SESSION_SECRET to a random secret of at least 32 characters in production.");
+if (NODE_ENV === "production" && (SESSION_SECRET.length < 32 || /replace|change|example|development|secret-before|your-secret/i.test(SESSION_SECRET))) throw new Error("Set SESSION_SECRET to a real random secret of at least 32 characters in production.");
+if (NODE_ENV === "production") {
+ try { const frontend = new URL(APP_ORIGIN); if (frontend.protocol !== "https:" || frontend.origin !== APP_ORIGIN.replace(/\\/$/, "")) throw new Error(); }
+ catch { throw new Error("In production, APP_ORIGIN must be the exact HTTPS frontend origin (without a path)."); }
+ if (!["none","lax","strict"].includes(COOKIE_SAME_SITE)) throw new Error("COOKIE_SAME_SITE must be none, lax, or strict.");
+ if (process.env.API_PUBLIC_URL) {
+  try { const api = new URL(process.env.API_PUBLIC_URL); if (api.protocol !== "https:" || api.origin !== process.env.API_PUBLIC_URL.replace(/\\/$/, "")) throw new Error(); }
+  catch { throw new Error("In production, API_PUBLIC_URL must be the HTTPS API origin (without a path)."); }
+ }
+}
 if (NODE_ENV === "production") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
@@ -79,7 +88,7 @@ function validOAuthConfig(slug, cfg) {
   return true;
  }
  if (!cfg.clientId || !cfg.clientSecret || !cfg.authorizeUrl || !cfg.tokenUrl || !cfg.userInfoUrl) return false;
- for (const key of ["authorizeUrl","tokenUrl","userInfoUrl"]) { try { const u = new URL(cfg[key]); if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return false; } catch { return false; } }
+ for (const key of ["authorizeUrl","tokenUrl","userInfoUrl"]) { try { const u = new URL(cfg[key]); if (NODE_ENV === "production" ? u.protocol !== "https:" : (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1")) return false; } catch { return false; } }
  return true;
 }
 function appleClientSecret(cfg) {
