@@ -109,7 +109,7 @@ app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
  const slug=String(req.params.provider||"").toLowerCase(),cfg=OAUTH_CONFIG[slug],flow=req.session.oauthFlow;
  try {
   if(!validOAuthConfig(slug,cfg)) return oauthSafeRedirect(res,{oauth_error:"provider_not_configured"});
-  if(!flow||flow.provider!==slug||typeof req.query.state!=="string"||!crypto.timingSafeEqual(Buffer.from(String(flow.state)),Buffer.from(String(req.query.state)))||Date.now()-flow.createdAt>10*60*1000) return oauthSafeRedirect(res,{oauth_error:"invalid_state"});
+  if(!flow||flow.provider!==slug||typeof req.query.state!=="string"||Buffer.byteLength(String(flow.state))!==Buffer.byteLength(String(req.query.state))||!crypto.timingSafeEqual(Buffer.from(String(flow.state)),Buffer.from(String(req.query.state)))||Date.now()-flow.createdAt>10*60*1000) return oauthSafeRedirect(res,{oauth_error:"invalid_state"});
   if(req.query.error||typeof req.query.code!=="string") return oauthSafeRedirect(res,{oauth_error:"provider_denied"});
   const redirectUri=oauthRedirectUri(slug), tokenBody=new URLSearchParams({grant_type:"authorization_code",code:req.query.code,redirect_uri:redirectUri,client_id:cfg.clientId,client_secret:cfg.clientSecret});
   const tokenHeaders={"Content-Type":"application/x-www-form-urlencoded","Accept":"application/json"};
@@ -120,7 +120,7 @@ app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
   const userInfoResponse=await fetch(cfg.userInfoUrl,{headers:{Authorization:"Bearer "+tokenData.access_token,Accept:"application/json"},signal:AbortSignal.timeout(12000)});
   const userInfo=await userInfoResponse.json().catch(()=>({}));
   if(!userInfoResponse.ok) throw new Error("Profildaten beim Anbieter konnten nicht gelesen werden.");
-  const profile=readProfilePath(userInfo,cfg.userInfoPath||"");
+  const profile=cfg.userInfoPath ? readProfilePath(userInfo,cfg.userInfoPath) : userInfo;
   const providerUserId=readProfilePath(profile,cfg.idField||"sub") ?? readProfilePath(profile,"id") ?? readProfilePath(profile,"sub");
   if(providerUserId===undefined||providerUserId===null||String(providerUserId).length===0) throw new Error("Der Anbieter hat keine stabile Benutzer-ID geliefert.");
   const id=String(providerUserId),displayName=String(readProfilePath(profile,cfg.nameField||"name")||readProfilePath(profile,"username")||slug).slice(0,120);
