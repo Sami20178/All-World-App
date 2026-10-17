@@ -21,11 +21,11 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_SAME_SITE = process.env.COOKIE_SAME_SITE || (NODE_ENV === "production" ? "none" : "lax");
 if (NODE_ENV === "production" && (SESSION_SECRET.length < 32 || /replace|change|example|development|secret-before|your-secret/i.test(SESSION_SECRET))) throw new Error("Set SESSION_SECRET to a real random secret of at least 32 characters in production.");
 if (NODE_ENV === "production") {
- try { const frontend = new URL(APP_ORIGIN); const configuredOrigin = APP_ORIGIN.endsWith("/") ? APP_ORIGIN.slice(0,-1) : APP_ORIGIN; if (frontend.protocol !== "https:" || frontend.origin !== configuredOrigin) throw new Error(); }
+ try { const frontend = new URL(APP_ORIGIN); if (frontend.protocol !== "https:" || frontend.origin !== APP_ORIGIN) throw new Error(); }
  catch { throw new Error("In production, APP_ORIGIN must be the exact HTTPS frontend origin (without a path)."); }
  if (!["none","lax","strict"].includes(COOKIE_SAME_SITE)) throw new Error("COOKIE_SAME_SITE must be none, lax, or strict.");
  if (process.env.API_PUBLIC_URL) {
-  try { const api = new URL(process.env.API_PUBLIC_URL); const configuredOrigin = process.env.API_PUBLIC_URL.endsWith("/") ? process.env.API_PUBLIC_URL.slice(0,-1) : process.env.API_PUBLIC_URL; if (api.protocol !== "https:" || api.origin !== configuredOrigin) throw new Error(); }
+  try { const api = new URL(process.env.API_PUBLIC_URL); if (api.protocol !== "https:" || api.origin !== process.env.API_PUBLIC_URL) throw new Error(); }
   catch { throw new Error("In production, API_PUBLIC_URL must be the HTTPS API origin (without a path)."); }
  }
 }
@@ -82,6 +82,10 @@ let OAUTH_CONFIG = {};
 try { OAUTH_CONFIG = JSON.parse(process.env.OAUTH_PROVIDERS_JSON || "{}"); if (!OAUTH_CONFIG || typeof OAUTH_CONFIG !== "object" || Array.isArray(OAUTH_CONFIG)) OAUTH_CONFIG = {}; } catch { console.error("OAUTH_PROVIDERS_JSON must be valid JSON; social login is disabled."); OAUTH_CONFIG = {}; }
 function validOAuthConfig(slug, cfg) {
  if (!/^[a-z0-9_-]{1,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
+ if (NODE_ENV === "production") {
+  try { const api = new URL(process.env.API_PUBLIC_URL || ""); if (api.protocol !== "https:" || api.origin !== process.env.API_PUBLIC_URL) return false; }
+  catch { return false; }
+ }
  if (slug === "apple") {
   if (!cfg.clientId || !cfg.teamId || !cfg.keyId || typeof cfg.privateKey !== "string" || !cfg.privateKey.includes("BEGIN PRIVATE KEY")) return false;
   try { crypto.createPrivateKey(cfg.privateKey.replace(/\\n/g, "\n")); } catch { return false; }
