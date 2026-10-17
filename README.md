@@ -20,6 +20,10 @@ Beim Löschen werden das Konto, seine Kontoverbindungen, alle Sitzungen dieses K
 
 Wenn `data/users.json` aus dem früheren Prototyp vorhanden ist, werden gültige Konten einmalig nach SQLite übernommen; die ursprüngliche Datei wird als Backup nicht gelöscht. Nach der Migration ist SQLite die maßgebliche Datenbank.
 
+## Deployment
+
+Für ein Docker-basiertes Produktionssetup mit persistentem SQLite-Volume, HTTPS-Reverse-Proxy-Hinweisen und OAuth-Callback-Konfiguration siehe [`DEPLOYMENT.md`](./DEPLOYMENT.md). Docker-Dateien: `Dockerfile`, `compose.yaml` und `.dockerignore`. Das Hinzufügen der Dateien bedeutet nicht, dass die API bereits gehostet oder veröffentlicht wurde.
+
 ## Lokal starten
 
 1. Node.js 20 oder neuer installieren.
