@@ -32,7 +32,8 @@ if (NODE_ENV === "production") {
 if (NODE_ENV === "production") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({ origin(origin, cb) { if (!origin || origin === APP_ORIGIN) return cb(null, true); return cb(new Error("Origin not allowed by All World API CORS policy.")); }, credentials: true, methods: ["GET","POST","DELETE","OPTIONS"], allowedHeaders: ["Content-Type"] }));
+app.use((req,res,next)=>{ if (!["POST","PUT","PATCH","DELETE"].includes(req.method)) return next(); if (req.path === "/api/auth/oauth/apple/callback") return next(); const origin=req.get("origin"); if ((origin && origin !== APP_ORIGIN) || (NODE_ENV === "production" && !origin)) return res.status(403).json({error:"Origin nicht erlaubt."}); next(); });
+app.use(cors({ origin(origin, cb) { if (!origin || origin === APP_ORIGIN) return cb(null, true); return cb(null, false); }, credentials: true, methods: ["GET","POST","DELETE","OPTIONS"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Zu viele Versuche. Bitte warte kurz und versuche es erneut." } });
@@ -121,8 +122,8 @@ async function verifyAppleIdentityToken(token, cfg, expectedNonce) {
  const validSignature = crypto.verify("sha256", Buffer.from(parts[0] + "." + parts[1]), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(parts[2], "base64url"));
  const now = Math.floor(Date.now() / 1000);
  const audienceValid = claims.aud === cfg.clientId || (Array.isArray(claims.aud) && claims.aud.includes(cfg.clientId));
- if (!validSignature || claims.iss !== "https://appleid.apple.com" || !audienceValid || !Number.isFinite(claims.exp) || claims.exp <= now || typeof claims.sub !== "string" || !claims.sub) throw new Error("Apple-Identität konnte nicht sicher verifiziert werden.");
- if (expectedNonce && claims.nonce !== expectedNonce) throw new Error("Apple-Nonce stimmt nicht überein.");
+ if (!validSignature || claims.iss !== "https://appleid.apple.com" || !audienceValid || !Number.isFinite(claims.exp) || claims.exp <= now || !Number.isFinite(claims.iat) || claims.iat > now + 60 || claims.iat < now - 3600 || typeof claims.sub !== "string" || !claims.sub) throw new Error("Apple-Identität konnte nicht sicher verifiziert werden.");
+ if (typeof expectedNonce !== "string" || !expectedNonce || claims.nonce !== expectedNonce) throw new Error("Apple-Nonce stimmt nicht überein.");
  return claims;
 }
 function oauthRedirectUri(slug) {
@@ -216,7 +217,7 @@ app.all("/api/auth/oauth/:provider/callback", async (req,res,next) => {
   setUserSession(req,userId,error=>{if(error)return next(error);oauthSafeRedirect(res,{oauth:"success",provider:slug});});
  } catch(e) { console.error("OAuth callback failed for "+slug+":",e.message); oauthSafeRedirect(res,{oauth_error:"login_failed"}); }
 });
-app.get("/api/auth/oauth/:provider/unlink", requireLogin, (req,res,next) => {
+app.post("/api/auth/oauth/:provider/unlink", requireLogin, (req,res,next) => {
  const slug=String(req.params.provider||"").toLowerCase();
  try { const result=db.prepare("DELETE FROM oauth_identities WHERE provider=? AND user_id=?").run(slug,req.session.userId); if(!result.changes)return res.status(404).json({error:"Für diesen Anbieter ist kein Login verbunden."}); res.json({ok:true}); } catch(e){next(e);}
 });
