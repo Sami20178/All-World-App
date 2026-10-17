@@ -54,8 +54,6 @@ For each provider, register this exact callback URL using your actual API domain
 
 Replace `PROVIDER` with the lowercase provider ID, such as `roblox`, `x`, `apple`, `google`, `github`, `discord`, `spotify`, `gitlab`, or `twitch`. Copy provider credentials into `OAUTH_PROVIDERS_JSON` on the server only. Set `"pkce":true` for Roblox and X. Apple uses `clientId` (Services ID), `teamId`, `keyId`, and `privateKey`; its private key must never be committed.
 
-Supercell ID remains disabled because there is no documented, general-purpose compatible OAuth flow implemented here. Do not enter game credentials into this API.
-
 ## 6. Configure the frontend
 
 Set `window.ALL_WORLD_API_URL = "https://YOUR-API-DOMAIN"` before loading `app.js` in the frontend deployment. Configure the API's `APP_ORIGIN` to that exact frontend origin. Both domains must use HTTPS when the frontend and API are cross-site.
