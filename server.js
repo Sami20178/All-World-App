@@ -25,6 +25,7 @@ app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({ origin(origin, cb) { if (!origin || origin === APP_ORIGIN) return cb(null, true); return cb(new Error("Origin not allowed by All World API CORS policy.")); }, credentials: true, methods: ["GET","POST","DELETE","OPTIONS"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Zu viele Versuche. Bitte warte kurz und versuche es erneut." } });
 const usernamePattern = /^[a-zA-Z0-9_-]{3,32}$/;
 let db;
@@ -67,14 +68,49 @@ app.delete("/api/account",requireLogin,async(req,res,next)=>{const id=req.sessio
 app.get("/api/account",requireLogin,(req,res,next)=>{try{const u=findUser(req.session.userId);if(!u)return res.status(401).json({error:"Bitte melde dich erneut an."});res.json({user:publicUser(u)});}catch(e){next(e);}});
 
 const OAUTH_LABELS = { roblox:"Roblox", apple:"Apple", google:"Google", amazon:"Amazon", microsoft:"Microsoft", github:"GitHub", x:"X", supercell:"Supercell ID", discord:"Discord", spotify:"Spotify", gitlab:"GitLab", twitch:"Twitch" };
-const OAUTH_UNSUPPORTED_GENERIC = new Set(["apple","supercell"]);
+const OAUTH_UNSUPPORTED_GENERIC = new Set(["supercell"]);
 let OAUTH_CONFIG = {};
 try { OAUTH_CONFIG = JSON.parse(process.env.OAUTH_PROVIDERS_JSON || "{}"); if (!OAUTH_CONFIG || typeof OAUTH_CONFIG !== "object" || Array.isArray(OAUTH_CONFIG)) OAUTH_CONFIG = {}; } catch { console.error("OAUTH_PROVIDERS_JSON must be valid JSON; social login is disabled."); OAUTH_CONFIG = {}; }
 function validOAuthConfig(slug, cfg) {
  if (!/^[a-z0-9_-]{1,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
+ if (slug === "apple") {
+  if (!cfg.clientId || !cfg.teamId || !cfg.keyId || typeof cfg.privateKey !== "string" || !cfg.privateKey.includes("BEGIN PRIVATE KEY")) return false;
+  try { crypto.createPrivateKey(cfg.privateKey.replace(/\\n/g, "\n")); } catch { return false; }
+  return true;
+ }
  if (!cfg.clientId || !cfg.clientSecret || !cfg.authorizeUrl || !cfg.tokenUrl || !cfg.userInfoUrl) return false;
  for (const key of ["authorizeUrl","tokenUrl","userInfoUrl"]) { try { const u = new URL(cfg[key]); if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return false; } catch { return false; } }
  return true;
+}
+function appleClientSecret(cfg) {
+ const now = Math.floor(Date.now() / 1000);
+ const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+ const header = encode({ alg: "ES256", kid: cfg.keyId });
+ const payload = encode({ iss: cfg.teamId, iat: now, exp: now + 300, aud: "https://appleid.apple.com", sub: cfg.clientId });
+ const input = header + "." + payload;
+ const key = crypto.createPrivateKey(String(cfg.privateKey).replace(/\\n/g, "\n"));
+ const signature = crypto.sign("sha256", Buffer.from(input), { key, dsaEncoding: "ieee-p1363" }).toString("base64url");
+ return input + "." + signature;
+}
+async function verifyAppleIdentityToken(token, cfg, expectedNonce) {
+ if (typeof token !== "string") throw new Error("Apple hat kein Identitätstoken geliefert.");
+ const parts = token.split(".");
+ if (parts.length !== 3) throw new Error("Ungültiges Apple-Identitätstoken.");
+ const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+ const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+ if (header.alg !== "ES256" || typeof header.kid !== "string") throw new Error("Nicht unterstützter Apple-Tokenalgorithmus.");
+ const response = await fetch("https://appleid.apple.com/auth/keys", { signal: AbortSignal.timeout(12000) });
+ const jwks = await response.json().catch(() => ({}));
+ if (!response.ok || !Array.isArray(jwks.keys)) throw new Error("Apple-Signaturschlüssel konnten nicht geladen werden.");
+ const jwk = jwks.keys.find(key => key.kid === header.kid && key.alg === "ES256");
+ if (!jwk) throw new Error("Apple-Signaturschlüssel nicht gefunden.");
+ const publicKey = crypto.createPublicKey({ key: jwk, format: "jwk" });
+ const validSignature = crypto.verify("sha256", Buffer.from(parts[0] + "." + parts[1]), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(parts[2], "base64url"));
+ const now = Math.floor(Date.now() / 1000);
+ const audienceValid = claims.aud === cfg.clientId || (Array.isArray(claims.aud) && claims.aud.includes(cfg.clientId));
+ if (!validSignature || claims.iss !== "https://appleid.apple.com" || !audienceValid || !Number.isFinite(claims.exp) || claims.exp <= now || typeof claims.sub !== "string" || !claims.sub) throw new Error("Apple-Identität konnte nicht sicher verifiziert werden.");
+ if (expectedNonce && claims.nonce !== expectedNonce) throw new Error("Apple-Nonce stimmt nicht überein.");
+ return claims;
 }
 function oauthRedirectUri(slug) {
  const base = process.env.API_PUBLIC_URL || (NODE_ENV === "development" || NODE_ENV === "test" ? "http://localhost:" + PORT : "");
@@ -105,36 +141,46 @@ app.get("/api/auth/oauth/:provider", (req,res,next) => {
  let redirectUri; try { redirectUri = oauthRedirectUri(slug); } catch(e) { return res.status(503).json({error:e.message}); }
  const state = crypto.randomBytes(32).toString("hex");
  const params = new URLSearchParams({response_type:"code",client_id:cfg.clientId,redirect_uri:redirectUri,scope:Array.isArray(cfg.scopes)?cfg.scopes.join(" "):(cfg.scopes||"openid profile email"),state});
+ const appleNonce = slug === "apple" ? crypto.randomBytes(32).toString("base64url") : null;
+ if (appleNonce) params.set("nonce",appleNonce);
  const pkce = cfg.pkce === true ? createPkcePair() : null;
  if (pkce) { params.set("code_challenge",pkce.challenge); params.set("code_challenge_method","S256"); }
  if (cfg.audience) params.set("audience",cfg.audience);
  if (cfg.extraAuthorizeParams && typeof cfg.extraAuthorizeParams === "object") for (const [k,v] of Object.entries(cfg.extraAuthorizeParams)) params.set(k,String(v));
- req.session.oauthFlow = {provider:slug,state,codeVerifier:pkce?.verifier || null,linkUserId:req.session.userId || null,createdAt:Date.now()};
- req.session.save(error => { if(error)return next(error); const target = new URL(cfg.authorizeUrl); for(const [k,v] of params) target.searchParams.set(k,v); res.redirect(302,target.toString()); });
+ req.session.oauthFlow = {provider:slug,state,codeVerifier:pkce?.verifier || null,nonce:appleNonce,linkUserId:req.session.userId || null,createdAt:Date.now()};
+ req.session.save(error => { if(error)return next(error); const target = new URL(slug === "apple" ? "https://appleid.apple.com/auth/authorize" : cfg.authorizeUrl); for(const [k,v] of params) target.searchParams.set(k,v); if(slug === "apple") target.searchParams.set("response_mode","form_post"); res.redirect(302,target.toString()); });
 });
-app.get("/api/auth/oauth/:provider/callback", async (req,res,next) => {
+app.all("/api/auth/oauth/:provider/callback", async (req,res,next) => {
+ const callbackParams = req.method === "POST" ? req.body : req.query;
  const slug=String(req.params.provider||"").toLowerCase(),cfg=OAUTH_CONFIG[slug],flow=req.session.oauthFlow;
  try {
   if(!validOAuthConfig(slug,cfg)) return oauthSafeRedirect(res,{oauth_error:"provider_not_configured"});
-  if(!flow||flow.provider!==slug||typeof req.query.state!=="string"||Buffer.byteLength(String(flow.state))!==Buffer.byteLength(String(req.query.state))||!crypto.timingSafeEqual(Buffer.from(String(flow.state)),Buffer.from(String(req.query.state)))||Date.now()-flow.createdAt>10*60*1000) return oauthSafeRedirect(res,{oauth_error:"invalid_state"});
-  if(req.query.error||typeof req.query.code!=="string") return oauthSafeRedirect(res,{oauth_error:"provider_denied"});
-  const redirectUri=oauthRedirectUri(slug), tokenBody=new URLSearchParams({grant_type:"authorization_code",code:req.query.code,redirect_uri:redirectUri,client_id:cfg.clientId,client_secret:cfg.clientSecret});
+  if(!flow||flow.provider!==slug||typeof callbackParams.state!=="string"||Buffer.byteLength(String(flow.state))!==Buffer.byteLength(String(callbackParams.state))||!crypto.timingSafeEqual(Buffer.from(String(flow.state)),Buffer.from(String(callbackParams.state)))||Date.now()-flow.createdAt>10*60*1000) return oauthSafeRedirect(res,{oauth_error:"invalid_state"});
+  if(callbackParams.error||typeof callbackParams.code!=="string") return oauthSafeRedirect(res,{oauth_error:"provider_denied"});
+  const redirectUri=oauthRedirectUri(slug), tokenBody=new URLSearchParams({grant_type:"authorization_code",code:callbackParams.code,redirect_uri:redirectUri,client_id:cfg.clientId,client_secret:cfg.clientSecret});
+  if (slug === "apple") tokenBody.set("client_secret",appleClientSecret(cfg));
   if (flow.codeVerifier) tokenBody.set("code_verifier",flow.codeVerifier);
   const tokenHeaders={"Content-Type":"application/x-www-form-urlencoded","Accept":"application/json"};
   if(cfg.clientAuthMethod==="basic"){tokenHeaders.Authorization="Basic "+Buffer.from(cfg.clientId+":"+cfg.clientSecret).toString("base64");tokenBody.delete("client_id");tokenBody.delete("client_secret");}
-  const tokenResponse=await fetch(cfg.tokenUrl,{method:"POST",headers:tokenHeaders,body:tokenBody,signal:AbortSignal.timeout(12000)});
+  const tokenResponse=await fetch(slug === "apple" ? "https://appleid.apple.com/auth/token" : cfg.tokenUrl,{method:"POST",headers:tokenHeaders,body:tokenBody,signal:AbortSignal.timeout(12000)});
   const tokenData=await tokenResponse.json().catch(()=>({}));
   if(!tokenResponse.ok||typeof tokenData.access_token!=="string") throw new Error("Token-Austausch beim Anbieter fehlgeschlagen.");
-  const userInfoHeaders={Authorization:"Bearer "+tokenData.access_token,Accept:"application/json"};
-  if(cfg.clientIdHeader) userInfoHeaders[String(cfg.clientIdHeader)]=cfg.clientId;
-  if(cfg.userInfoHeaders&&typeof cfg.userInfoHeaders==="object") for(const [key,value] of Object.entries(cfg.userInfoHeaders)) userInfoHeaders[key]=String(value);
-  const userInfoResponse=await fetch(cfg.userInfoUrl,{headers:userInfoHeaders,signal:AbortSignal.timeout(12000)});
-  const userInfo=await userInfoResponse.json().catch(()=>({}));
-  if(!userInfoResponse.ok) throw new Error("Profildaten beim Anbieter konnten nicht gelesen werden.");
-  const profile=cfg.userInfoPath ? readProfilePath(userInfo,cfg.userInfoPath) : userInfo;
+  let profile, displayNameOverride = "";
+  if (slug === "apple") {
+   profile = await verifyAppleIdentityToken(tokenData.id_token,cfg,flow.nonce);
+   try { const supplied = typeof callbackParams.user === "string" ? JSON.parse(callbackParams.user) : callbackParams.user; displayNameOverride = [supplied?.name?.firstName,supplied?.name?.lastName].filter(Boolean).join(" ").slice(0,120); } catch {}
+  } else {
+   const userInfoHeaders={Authorization:"Bearer "+tokenData.access_token,Accept:"application/json"};
+   if(cfg.clientIdHeader) userInfoHeaders[String(cfg.clientIdHeader)]=cfg.clientId;
+   if(cfg.userInfoHeaders&&typeof cfg.userInfoHeaders==="object") for(const [key,value] of Object.entries(cfg.userInfoHeaders)) userInfoHeaders[key]=String(value);
+   const userInfoResponse=await fetch(cfg.userInfoUrl,{headers:userInfoHeaders,signal:AbortSignal.timeout(12000)});
+   const userInfo=await userInfoResponse.json().catch(()=>({}));
+   if(!userInfoResponse.ok) throw new Error("Profildaten beim Anbieter konnten nicht gelesen werden.");
+   profile=cfg.userInfoPath ? readProfilePath(userInfo,cfg.userInfoPath) : userInfo;
+  }
   const providerUserId=readProfilePath(profile,cfg.idField||"sub") ?? readProfilePath(profile,"id") ?? readProfilePath(profile,"sub");
   if(providerUserId===undefined||providerUserId===null||String(providerUserId).length===0) throw new Error("Der Anbieter hat keine stabile Benutzer-ID geliefert.");
-  const id=String(providerUserId),displayName=String(readProfilePath(profile,cfg.nameField||"name")||readProfilePath(profile,"username")||slug).slice(0,120);
+  const id=String(providerUserId),displayName=String(displayNameOverride||readProfilePath(profile,cfg.nameField||"name")||readProfilePath(profile,"username")||readProfilePath(profile,"email")||slug).slice(0,120);
   const existing=db.prepare("SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?").get(slug,id);
   if(flow.linkUserId) {
    if(!findUser(flow.linkUserId)) { delete req.session.oauthFlow; return oauthSafeRedirect(res,{oauth_error:"account_missing"}); }
