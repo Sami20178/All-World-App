@@ -36,3 +36,22 @@ Für die lokale Frontend-Entwicklung kann `APP_ORIGIN=http://localhost:5500` ver
 - Einen langen zufälligen `SESSION_SECRET` (mindestens 32 Zeichen) über Umgebungsvariablen konfigurieren.
 - Datenbankdatei und Backups schützen; niemals `.env` oder `data/` committen oder die SQLite-Datei öffentlich ausliefern.
 - Tests und Hosting-Integration prüfen, bevor das System für echte Nutzer freigeschaltet wird.
+
+## Social sign-in (OAuth 2.0)
+
+The API supports configurable OAuth 2.0 authorization-code providers without storing provider passwords. Configure `API_PUBLIC_URL` as the public HTTPS API origin and set `OAUTH_PROVIDERS_JSON` as a server environment variable. Each provider entry needs `clientId`, `clientSecret`, `authorizeUrl`, `tokenUrl`, `userInfoUrl`; optional keys are `scopes`, `idField`, `nameField`, `userInfoPath` and `clientAuthMethod` (`body` by default, or `basic`). Register each exact callback URL as `https://YOUR-API-HOST/api/auth/oauth/PROVIDER/callback` with the identity provider. The UI only enables providers with valid server-side configuration.
+
+Example JSON shape (replace all placeholders with credentials from each provider's developer console; never commit real secrets):
+
+```json
+{
+  "google": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://accounts.google.com/o/oauth2/v2/auth","tokenUrl":"https://oauth2.googleapis.com/token","userInfoUrl":"https://openidconnect.googleapis.com/v1/userinfo","scopes":"openid email profile","idField":"sub","nameField":"name","clientAuthMethod":"body"},
+  "github": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://github.com/login/oauth/authorize","tokenUrl":"https://github.com/login/oauth/access_token","userInfoUrl":"https://api.github.com/user","scopes":"read:user user:email","idField":"id","nameField":"login","clientAuthMethod":"body"},
+  "microsoft": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/authorize","tokenUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/token","userInfoUrl":"https://graph.microsoft.com/oidc/userinfo","scopes":"openid profile email User.Read","idField":"sub","nameField":"name","clientAuthMethod":"body"},
+  "x": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://twitter.com/i/oauth2/authorize","tokenUrl":"https://api.twitter.com/2/oauth2/token","userInfoUrl":"https://api.twitter.com/2/users/me?user.fields=name,username","scopes":"users.read tweet.read offline.access","idField":"data.id","nameField":"data.username","clientAuthMethod":"basic"},
+  "roblox": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://apis.roblox.com/oauth/v1/authorize","tokenUrl":"https://apis.roblox.com/oauth/v1/token","userInfoUrl":"https://apis.roblox.com/oauth/v1/userinfo","scopes":"openid profile","idField":"sub","nameField":"preferred_username","clientAuthMethod":"body"},
+  "amazon": {"clientId":"...","clientSecret":"...","authorizeUrl":"https://www.amazon.com/ap/oa","tokenUrl":"https://api.amazon.com/auth/o2/token","userInfoUrl":"https://api.amazon.com/user/profile","scopes":"profile","idField":"user_id","nameField":"name","clientAuthMethod":"body"}
+}
+```
+
+Provider endpoint requirements can change, so verify each provider's current official documentation and exact redirect URI before enabling it. Google, GitHub, Microsoft, X, Roblox and Amazon can use this generic adapter when their app registration and scopes are configured correctly. Apple requires its signed client-secret/JWT and ID-token validation flow, and Supercell ID does not expose a compatible general-purpose OAuth 2.0 flow here; those buttons remain unavailable rather than pretending to work. Additional standard OAuth 2.0 providers can be added by adding a configuration entry. Linking a provider while logged in attaches its stable provider ID to the current account; email-address matching alone is never used to merge accounts.
