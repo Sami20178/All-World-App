@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs/promises");
 const net = require("node:net");
@@ -103,6 +103,12 @@ async function main() {
     assert.equal(appleUrl.searchParams.get("state")?.length,64,"Apple flow should use session-bound state");
     assert.ok(providerList.some(provider=>provider.id==="supercell"&&!provider.enabled),"Supercell ID should remain unavailable without a documented compatible provider flow");
     assert.equal((await request("/api/auth/oauth/supercell")).status,503);
+    const badOrigin=spawnSync(process.execPath,[path.join(__dirname,"..","server.js")],{encoding:"utf8",timeout:5000,env:{...process.env,NODE_ENV:"production",SESSION_SECRET:"R".repeat(64),APP_ORIGIN:"http://example.invalid",PORT:"0",DATA_DIR:path.join(dataDir,"production-guard-origin")}});
+    assert.notEqual(badOrigin.status,0,"production should refuse an insecure frontend origin");
+    assert.match(badOrigin.stderr,/APP_ORIGIN must be the exact HTTPS frontend origin/,"production origin error should be actionable");
+    const placeholderSecret=spawnSync(process.execPath,[path.join(__dirname,"..","server.js")],{encoding:"utf8",timeout:5000,env:{...process.env,NODE_ENV:"production",SESSION_SECRET:"replace-with-a-long-random-secret-before-production",APP_ORIGIN:"https://frontend.example.invalid",PORT:"0",DATA_DIR:path.join(dataDir,"production-guard-secret")}});
+    assert.notEqual(placeholderSecret.status,0,"production should refuse placeholder session secrets");
+    assert.match(placeholderSecret.stderr,/Set SESSION_SECRET to a real random secret/,"production secret error should be actionable");
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
     const username="ci_"+Date.now().toString(36), password="Test-password-2026!";
