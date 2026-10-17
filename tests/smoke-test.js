@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const net = require("node:net");
@@ -19,8 +20,10 @@ async function main() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "all-world-api-test-"));
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const appleKeyPair = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const applePrivateKey = appleKeyPair.privateKey.export({ type: "pkcs8", format: "pem" });
   const child = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
-    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", API_PUBLIC_URL:baseUrl, SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir, OAUTH_PROVIDERS_JSON:JSON.stringify({roblox:{clientId:"test-roblox",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/roblox",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"openid profile",idField:"sub",nameField:"preferred_username",pkce:true},x:{clientId:"test-x",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/x",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"users.read tweet.read offline.access",idField:"data.id",nameField:"data.username",clientAuthMethod:"basic",pkce:true}}) },
+    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", API_PUBLIC_URL:baseUrl, SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir, OAUTH_PROVIDERS_JSON:JSON.stringify({roblox:{clientId:"test-roblox",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/roblox",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"openid profile",idField:"sub",nameField:"preferred_username",pkce:true},x:{clientId:"test-x",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/x",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"users.read tweet.read offline.access",idField:"data.id",nameField:"data.username",clientAuthMethod:"basic",pkce:true},apple:{clientId:"com.example.allworld",teamId:"TESTTEAM123",keyId:"TESTKEY123",privateKey:applePrivateKey,scopes:"name email"}}) },
     stdio:["ignore","pipe","pipe"]
   });
   let logs="";
@@ -52,6 +55,18 @@ async function main() {
       assert.match(authUrl.searchParams.get("code_challenge")||"",/^[A-Za-z0-9_-]{43}$/,"PKCE challenge should be base64url SHA-256");
       assert.equal(authUrl.searchParams.get("state")?.length,64,"OAuth state should be random and session-bound");
     }
+
+    assert.ok(providerList.some(provider=>provider.id==="apple"&&provider.enabled),"Apple should enable with a valid Services ID and private key");
+    const appleStart=await request("/api/auth/oauth/apple",{redirect:"manual"});
+    assert.equal(appleStart.status,302);
+    const appleUrl=new URL(appleStart.headers.get("location"));
+    assert.equal(appleUrl.origin,"https://appleid.apple.com");
+    assert.equal(appleUrl.pathname,"/auth/authorize");
+    assert.equal(appleUrl.searchParams.get("response_mode"),"form_post");
+    assert.match(appleUrl.searchParams.get("nonce")||"",/^[A-Za-z0-9_-]{43}$/,"Apple flow should use a fresh nonce");
+    assert.equal(appleUrl.searchParams.get("state")?.length,64,"Apple flow should use session-bound state");
+    assert.ok(providerList.some(provider=>provider.id==="supercell"&&!provider.enabled),"Supercell ID should remain unavailable without a documented compatible provider flow");
+    assert.equal((await request("/api/auth/oauth/supercell")).status,503);
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
     const username="ci_"+Date.now().toString(36), password="Test-password-2026!";
