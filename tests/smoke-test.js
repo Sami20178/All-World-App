@@ -39,7 +39,7 @@ async function main() {
     const username="ci_"+Date.now().toString(36), password="Test-password-2026!";
     const registered=await jsonRequest("/api/auth/register",{username,password});
     assert.equal(registered.status,201);
-    const first=(await registered.json()).user, firstCookie=cookieFrom(registered);
+    const first=(await registered.json()).user; let firstCookie=cookieFrom(registered);
     assert.ok(firstCookie,"registration should set a session cookie");
 
     const dbPath=path.join(dataDir,"all-world.sqlite");
@@ -66,6 +66,9 @@ async function main() {
     const loginCookie=cookieFrom(login);
     assert.ok(loginCookie,"login should create a session after logout");
     assert.equal((await jsonRequest("/api/auth/logout",{},loginCookie)).status,200);
+    const reloginFirst=await jsonRequest("/api/auth/login",{username,password});
+    assert.equal(reloginFirst.status,200);
+    firstCookie=cookieFrom(reloginFirst);
 
     const secondName="ci_second_"+Date.now().toString(36), secondPassword="Second-password-2026!";
     const secondReg=await jsonRequest("/api/auth/register",{username:secondName,password:secondPassword});
