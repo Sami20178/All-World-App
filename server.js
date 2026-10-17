@@ -178,3 +178,36 @@ app.all("/api/auth/oauth/:provider/callback", async (req,res,next) => {
    if(!userInfoResponse.ok) throw new Error("Profildaten beim Anbieter konnten nicht gelesen werden.");
    profile=cfg.userInfoPath ? readProfilePath(userInfo,cfg.userInfoPath) : userInfo;
   }
+  const providerUserId=readProfilePath(profile,cfg.idField||"sub") ?? readProfilePath(profile,"id") ?? readProfilePath(profile,"sub");
+  if(providerUserId===undefined||providerUserId===null||String(providerUserId).length===0) throw new Error("Der Anbieter hat keine stabile Benutzer-ID geliefert.");
+  const id=String(providerUserId),displayName=String(displayNameOverride||readProfilePath(profile,cfg.nameField||"name")||readProfilePath(profile,"username")||readProfilePath(profile,"email")||slug).slice(0,120);
+  const existing=db.prepare("SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?").get(slug,id);
+  if(flow.linkUserId) {
+   if(!findUser(flow.linkUserId)) { delete req.session.oauthFlow; return oauthSafeRedirect(res,{oauth_error:"account_missing"}); }
+   if(existing&&existing.user_id!==flow.linkUserId) { delete req.session.oauthFlow; return oauthSafeRedirect(res,{oauth_error:"identity_already_linked"}); }
+   db.prepare("INSERT OR IGNORE INTO oauth_identities(provider,provider_user_id,user_id,display_name,created_at) VALUES(?,?,?,?,?)").run(slug,id,flow.linkUserId,displayName,new Date().toISOString());
+   delete req.session.oauthFlow;
+   return req.session.save(error=>{if(error)return next(error);oauthSafeRedirect(res,{oauth:"linked",provider:slug});});
+  }
+  let userId=existing?.user_id;
+  if(!userId) {
+   const base=(slug+"_"+displayName).toLowerCase().replace(/[^a-z0-9_-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,22)||slug;
+   let username="", normalized="";
+   for(let i=0;i<8;i++){const suffix=crypto.randomBytes(3).toString("hex");username=(base+"_"+suffix).slice(0,32);normalized=username.toLowerCase();if(!db.prepare("SELECT 1 FROM users WHERE username_normalized=?").get(normalized))break;username="";}
+   if(!username) throw new Error("Konnte keinen freien lokalen Benutzernamen erzeugen.");
+   userId=crypto.randomUUID();
+   const passwordHash=await bcrypt.hash(crypto.randomBytes(48).toString("base64url"),12),now=new Date().toISOString();
+   db.transaction(()=>{db.prepare("INSERT INTO users(id,username,username_normalized,password_hash,created_at) VALUES(?,?,?,?,?)").run(userId,username,normalized,passwordHash,now);db.prepare("INSERT INTO oauth_identities(provider,provider_user_id,user_id,display_name,created_at) VALUES(?,?,?,?,?)").run(slug,id,userId,displayName,now);})();
+  }
+  delete req.session.oauthFlow;
+  setUserSession(req,userId,error=>{if(error)return next(error);oauthSafeRedirect(res,{oauth:"success",provider:slug});});
+ } catch(e) { console.error("OAuth callback failed for "+slug+":",e.message); oauthSafeRedirect(res,{oauth_error:"login_failed"}); }
+});
+app.get("/api/auth/oauth/:provider/unlink", requireLogin, (req,res,next) => {
+ const slug=String(req.params.provider||"").toLowerCase();
+ try { const result=db.prepare("DELETE FROM oauth_identities WHERE provider=? AND user_id=?").run(slug,req.session.userId); if(!result.changes)return res.status(404).json({error:"Für diesen Anbieter ist kein Login verbunden."}); res.json({ok:true}); } catch(e){next(e);}
+});
+
+app.use((req,res)=>res.status(404).json({error:"API-Endpunkt nicht gefunden."}));
+app.use((e,_req,res,_next)=>{console.error("API error:",e.message);if(res.headersSent)return;res.status(500).json({error:"Interner Serverfehler."});});
+initializeDatabase().then(()=>{const server=app.listen(PORT,"0.0.0.0",()=>console.log("All World API listening on port "+PORT));const shutdown=()=>server.close(()=>{if(db)db.close();process.exit(0);});process.once("SIGTERM",shutdown);process.once("SIGINT",shutdown);}).catch(e=>{console.error("Database initialization failed:",e.message);process.exitCode=1;});
