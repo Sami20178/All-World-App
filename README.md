@@ -1,22 +1,38 @@
 # All World — Node.js API Server
 
-## Konto und Anmeldung
-- `POST /api/auth/register` — create an account
-- `POST /api/auth/login` — sign in
-- `GET /api/auth/me` — current session
-- `POST /api/auth/logout` — sign out
-- `GET /api/account` — protected account endpoint
+## Konten, Anmeldung und Datenbank
 
-Accounts are stored persistently in SQLite at `data/all-world.sqlite` (or `DATABASE_FILE`). Passwords are hashed with bcrypt and are never stored as plain text. Usernames are unique regardless of letter case. Login and registration are rate-limited, and session cookies are HttpOnly. If the old `data/users.json` prototype exists, valid accounts are imported into SQLite without deleting the original file.
+Die API speichert Konten dauerhaft in SQLite: `data/all-world.sqlite` (oder im Pfad aus `DATABASE_FILE`). Passwörter werden mit bcrypt gehasht. Benutzernamen sind unabhängig von Groß-/Kleinschreibung eindeutig.
 
-## Start
-1. Install Node.js 20 or newer.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env` and set values for your environment.
-4. Run `npm start`.
-5. Run `npm test` to exercise health, validation, registration, duplicate protection, login/logout, sessions and the protected account endpoint.
+- `POST /api/auth/register` — Konto erstellen und anmelden
+- `POST /api/auth/login` — anmelden; ein Konto bleibt nach dem Abmelden gespeichert
+- `GET /api/auth/me` — angemeldetes Konto ermitteln
+- `POST /api/auth/logout` — Sitzung beenden, Konto nicht löschen
+- `GET /api/auth/linked` — verbundenen Konten anzeigen
+- `POST /api/auth/link` — weiteres Konto verbinden; dessen Passwort ist erforderlich
+- `POST /api/auth/switch` — zu einem bereits verbundenen Konto wechseln
+- `GET /api/account` — geschützter Kontobereich
+- `DELETE /api/account` — aktives Konto nach Passwortbestätigung dauerhaft löschen
 
-For local frontend development, set `APP_ORIGIN=http://localhost:5500` and serve the source-code folder on port 5500. Set `API_BASE_URL` in frontend `app.js` to the API address.
+Sitzungen werden ebenfalls in SQLite gespeichert und laufen nach sieben Tagen ab. Konto-Verbindungen sind bidirektional. Das Verbinden erfordert die Zugangsdaten des zweiten Kontos, damit niemand fremde Konten nur durch Kenntnis eines Benutzernamens verknüpfen kann.
 
-## Before public deployment
-Use HTTPS, set a long random `SESSION_SECRET`, and set `APP_ORIGIN` to the exact deployed frontend origin. The current Express session store is in-memory, so users will need to sign in again after a server restart; configure a persistent session store before running multiple server instances or deploying publicly. Back up the SQLite database securely, never commit `.env` or `data/`, and do not expose the database file over the web.
+Beim Löschen werden das Konto, seine Kontoverbindungen, alle Sitzungen dieses Kontos und zugehörige Datensätze aus der Tabelle `user_data` entfernt. Andere verbundene Konten bleiben bestehen, verlieren aber die Verbindung zum gelöschten Konto. Ein gelöschter Benutzername kann nach der Löschung erneut verwendet werden; das gelöschte Konto selbst und seine ID können sich nicht mehr anmelden. Daten, die in externen Diensten gespeichert sind, müssen dort separat gelöscht werden.
+
+Wenn `data/users.json` aus dem früheren Prototyp vorhanden ist, werden gültige Konten einmalig nach SQLite übernommen; die ursprüngliche Datei wird als Backup nicht gelöscht. Nach der Migration ist SQLite die maßgebliche Datenbank.
+
+## Lokal starten
+
+1. Node.js 20 oder neuer installieren.
+2. `npm install` ausführen.
+3. `.env.example` nach `.env` kopieren und konfigurieren.
+4. `npm start` ausführen.
+5. `npm test` ausführen.
+
+Für die lokale Frontend-Entwicklung kann `APP_ORIGIN=http://localhost:5500` verwendet werden. Die Frontend-Datei `app.js` erwartet die API-Adresse in `window.ALL_WORLD_API_URL` oder verwendet standardmäßig `http://localhost:3000`.
+
+## Vor öffentlicher Bereitstellung
+
+- HTTPS aktivieren und `APP_ORIGIN` auf den exakten Frontend-Ursprung setzen.
+- Einen langen zufälligen `SESSION_SECRET` (mindestens 32 Zeichen) über Umgebungsvariablen konfigurieren.
+- Datenbankdatei und Backups schützen; niemals `.env` oder `data/` committen oder die SQLite-Datei öffentlich ausliefern.
+- Tests und Hosting-Integration prüfen, bevor das System für echte Nutzer freigeschaltet wird.
