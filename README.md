@@ -1,24 +1,38 @@
 # All World — Node.js API Server
 
+## Konten, Anmeldung und Datenbank
 
-## API
-- `GET /api/health` — health check
-- `POST /api/auth/register` — create an account
-- `POST /api/auth/login` — sign in
-- `GET /api/auth/me` — current session
-- `POST /api/auth/logout` — sign out
-- `GET /api/account` — protected account endpoint
+Die API speichert Konten dauerhaft in SQLite: `data/all-world.sqlite` (oder im Pfad aus `DATABASE_FILE`). Passwörter werden mit bcrypt gehasht. Benutzernamen sind unabhängig von Groß-/Kleinschreibung eindeutig.
 
-Passwords are hashed with bcrypt. Login and registration are rate-limited. Session cookies are HttpOnly. Account records are stored in the server's `data/users.json`; that directory is ignored by Git.
+- `POST /api/auth/register` — Konto erstellen und anmelden
+- `POST /api/auth/login` — anmelden; ein Konto bleibt nach dem Abmelden gespeichert
+- `GET /api/auth/me` — angemeldetes Konto ermitteln
+- `POST /api/auth/logout` — Sitzung beenden, Konto nicht löschen
+- `GET /api/auth/linked` — verbundenen Konten anzeigen
+- `POST /api/auth/link` — weiteres Konto verbinden; dessen Passwort ist erforderlich
+- `POST /api/auth/switch` — zu einem bereits verbundenen Konto wechseln
+- `GET /api/account` — geschützter Kontobereich
+- `DELETE /api/account` — aktives Konto nach Passwortbestätigung dauerhaft löschen
 
-## Start
-1. Install Node.js 20 or newer.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env` and set values for your environment.
-4. Run `npm start`.
-5. Run `npm test` to start an isolated temporary server and exercise health, validation, registration, login/logout, sessions and the protected account endpoint. The test uses a temporary data directory and removes it afterward.
+Sitzungen werden ebenfalls in SQLite gespeichert und laufen nach sieben Tagen ab. Konto-Verbindungen sind bidirektional. Das Verbinden erfordert die Zugangsdaten des zweiten Kontos, damit niemand fremde Konten nur durch Kenntnis eines Benutzernamens verknüpfen kann.
 
-For local frontend development, set `APP_ORIGIN=http://localhost:5500` and serve the source-code folder on port 5500. Set `API_BASE_URL` in frontend `app.js` to the API address.
+Beim Löschen werden das Konto, seine Kontoverbindungen, alle Sitzungen dieses Kontos und zugehörige Datensätze aus der Tabelle `user_data` entfernt. Andere verbundene Konten bleiben bestehen, verlieren aber die Verbindung zum gelöschten Konto. Ein gelöschter Benutzername kann nach der Löschung erneut verwendet werden; das gelöschte Konto selbst und seine ID können sich nicht mehr anmelden. Daten, die in externen Diensten gespeichert sind, müssen dort separat gelöscht werden.
 
-## Before public deployment
-Use HTTPS, set a long random `SESSION_SECRET`, set `APP_ORIGIN` to the exact deployed frontend origin, and replace Express's in-memory session store with a persistent session store. The JSON user store is a small starter implementation; for a larger production service, migrate accounts to a database. Do not commit `.env` or `data/users.json`.
+Wenn `data/users.json` aus dem früheren Prototyp vorhanden ist, werden gültige Konten einmalig nach SQLite übernommen; die ursprüngliche Datei wird als Backup nicht gelöscht. Nach der Migration ist SQLite die maßgebliche Datenbank.
+
+## Lokal starten
+
+1. Node.js 20 oder neuer installieren.
+2. `npm install` ausführen.
+3. `.env.example` nach `.env` kopieren und konfigurieren.
+4. `npm start` ausführen.
+5. `npm test` ausführen.
+
+Für die lokale Frontend-Entwicklung kann `APP_ORIGIN=http://localhost:5500` verwendet werden. Die Frontend-Datei `app.js` erwartet die API-Adresse in `window.ALL_WORLD_API_URL` oder verwendet standardmäßig `http://localhost:3000`.
+
+## Vor öffentlicher Bereitstellung
+
+- HTTPS aktivieren und `APP_ORIGIN` auf den exakten Frontend-Ursprung setzen.
+- Einen langen zufälligen `SESSION_SECRET` (mindestens 32 Zeichen) über Umgebungsvariablen konfigurieren.
+- Datenbankdatei und Backups schützen; niemals `.env` oder `data/` committen oder die SQLite-Datei öffentlich ausliefern.
+- Tests und Hosting-Integration prüfen, bevor das System für echte Nutzer freigeschaltet wird.
