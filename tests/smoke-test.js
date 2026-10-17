@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const Database = require("better-sqlite3");
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -50,7 +51,7 @@ async function main() {
   });
   const cookieFrom = response => {
     const value = response.headers.get("set-cookie") || "";
-    const match = value.match(/allworld\.sid=[^;]*/);
+    const match = value.match(/allworld\\.sid=[^;]*/);
     return match ? match[0] : "";
   };
 
@@ -84,6 +85,19 @@ async function main() {
     const registeredCookie = cookieFrom(registered);
     assert.ok(registeredCookie, "registration should set the session cookie");
 
+    // Verify account data is in a real SQLite file and the password is stored only as a hash.
+    const databasePath = path.join(dataDir, "all-world.sqlite");
+    await fs.access(databasePath);
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      const storedUser = database.prepare("SELECT username, password_hash FROM users WHERE username_normalized = ?").get(username.toLowerCase());
+      assert.ok(storedUser, "registered account should be persisted in SQLite");
+      assert.notEqual(storedUser.password_hash, password, "password must never be stored in plain text");
+      assert.match(storedUser.password_hash, /^\\$2[aby]\\$/i, "stored password should be a bcrypt hash");
+    } finally {
+      database.close();
+    }
+
     const duplicate = await jsonRequest("/api/auth/register", { username, password });
     assert.equal(duplicate.status, 409, "duplicate username should be rejected");
 
@@ -106,12 +120,12 @@ async function main() {
     const login = await jsonRequest("/api/auth/login", { username, password });
     assert.equal(login.status, 200, "valid login should succeed");
     const loginCookie = cookieFrom(login);
-    assert.ok(loginCookie, "login should set a session cookie");
+    assert.ok(loginCookie, "login should set the session cookie");
 
     const logout = await jsonRequest("/api/auth/logout", {}, loginCookie);
     assert.equal(logout.status, 200);
 
-    console.log("All World API smoke tests passed: health, validation, registration, duplicate protection, session, account authorization, login, logout.");
+    console.log("All World API smoke tests passed: health, validation, SQLite persistence, bcrypt password hash, duplicate protection, session, account authorization, login and logout.");
   } finally {
     if (child.exitCode === null) {
       const exited = new Promise(resolve => child.once("exit", resolve));
