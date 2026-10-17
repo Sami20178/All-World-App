@@ -71,7 +71,7 @@ const OAUTH_UNSUPPORTED_GENERIC = new Set(["apple","supercell"]);
 let OAUTH_CONFIG = {};
 try { OAUTH_CONFIG = JSON.parse(process.env.OAUTH_PROVIDERS_JSON || "{}"); if (!OAUTH_CONFIG || typeof OAUTH_CONFIG !== "object" || Array.isArray(OAUTH_CONFIG)) OAUTH_CONFIG = {}; } catch { console.error("OAUTH_PROVIDERS_JSON must be valid JSON; social login is disabled."); OAUTH_CONFIG = {}; }
 function validOAuthConfig(slug, cfg) {
- if (!/^[a-z0-9_-]{2,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
+ if (!/^[a-z0-9_-]{1,32}$/.test(slug) || OAUTH_UNSUPPORTED_GENERIC.has(slug) || !cfg || typeof cfg !== "object") return false;
  if (!cfg.clientId || !cfg.clientSecret || !cfg.authorizeUrl || !cfg.tokenUrl || !cfg.userInfoUrl) return false;
  for (const key of ["authorizeUrl","tokenUrl","userInfoUrl"]) { try { const u = new URL(cfg[key]); if (u.protocol !== "https:" && u.hostname !== "localhost" && u.hostname !== "127.0.0.1") return false; } catch { return false; } }
  return true;
