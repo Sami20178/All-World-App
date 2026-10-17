@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
+const http = require("node:http");
 const fs = require("node:fs/promises");
 const net = require("node:net");
 const os = require("node:os");
@@ -19,11 +20,32 @@ async function availablePort() {
 async function main() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "all-world-api-test-"));
   const port = await availablePort();
+  const providerPort = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const providerBaseUrl = `http://127.0.0.1:${providerPort}`;
   const appleKeyPair = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const applePrivateKey = appleKeyPair.privateKey.export({ type: "pkcs8", format: "pem" });
+  const providerStub = http.createServer((req,res) => {
+    res.setHeader("content-type","application/json");
+    if (req.method === "POST" && req.url === "/token") {
+      let body = "";
+      req.on("data",chunk=>{body+=chunk;});
+      req.on("end",()=>{
+        const isX = (req.headers.authorization || "") === "Basic " + Buffer.from("test-x:test-secret").toString("base64");
+        res.end(JSON.stringify({access_token:isX?"access-x":"access-roblox",token_type:"Bearer",expires_in:900}));
+      });
+      return;
+    }
+    if (req.method === "GET" && req.url === "/userinfo") {
+      const isX = req.headers.authorization === "Bearer access-x";
+      res.end(JSON.stringify(isX?{data:{id:"x-user-100",username:"TestX"}}:{sub:"roblox-user-100",preferred_username:"TestRoblox"}));
+      return;
+    }
+    res.statusCode = 404; res.end(JSON.stringify({error:"not_found"}));
+  });
+  await new Promise((resolve,reject)=>{providerStub.once("error",reject);providerStub.listen(providerPort,"127.0.0.1",resolve);});
   const child = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
-    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", API_PUBLIC_URL:baseUrl, SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir, OAUTH_PROVIDERS_JSON:JSON.stringify({roblox:{clientId:"test-roblox",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/roblox",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"openid profile",idField:"sub",nameField:"preferred_username",pkce:true},x:{clientId:"test-x",clientSecret:"test-secret",authorizeUrl:baseUrl+"/authorize/x",tokenUrl:baseUrl+"/token",userInfoUrl:baseUrl+"/userinfo",scopes:"users.read tweet.read offline.access",idField:"data.id",nameField:"data.username",clientAuthMethod:"basic",pkce:true},apple:{clientId:"com.example.allworld",teamId:"TESTTEAM123",keyId:"TESTKEY123",privateKey:applePrivateKey,scopes:"name email"}}) },
+    env: { ...process.env, NODE_ENV:"test", PORT:String(port), APP_ORIGIN:"http://localhost:5500", API_PUBLIC_URL:baseUrl, SESSION_SECRET:"ci-only-session-secret-not-used-in-production", DATA_DIR:dataDir, OAUTH_PROVIDERS_JSON:JSON.stringify({roblox:{clientId:"test-roblox",clientSecret:"test-secret",authorizeUrl:providerBaseUrl+"/authorize/roblox",tokenUrl:providerBaseUrl+"/token",userInfoUrl:providerBaseUrl+"/userinfo",scopes:"openid profile",idField:"sub",nameField:"preferred_username",pkce:true},x:{clientId:"test-x",clientSecret:"test-secret",authorizeUrl:providerBaseUrl+"/authorize/x",tokenUrl:providerBaseUrl+"/token",userInfoUrl:providerBaseUrl+"/userinfo",scopes:"users.read tweet.read offline.access",idField:"data.id",nameField:"data.username",clientAuthMethod:"basic",pkce:true},apple:{clientId:"com.example.allworld",teamId:"TESTTEAM123",keyId:"TESTKEY123",privateKey:applePrivateKey,scopes:"name email"}}) },
     stdio:["ignore","pipe","pipe"]
   });
   let logs="";
@@ -56,6 +78,20 @@ async function main() {
       assert.equal(authUrl.searchParams.get("state")?.length,64,"OAuth state should be random and session-bound");
     }
 
+    for (const id of ["roblox","x"]) {
+      const start=await request("/api/auth/oauth/"+id,{redirect:"manual"});
+      const flowCookie=cookieFrom(start);
+      const authUrl=new URL(start.headers.get("location"));
+      const callback=await request("/api/auth/oauth/"+id+"/callback?code=test-code&state="+encodeURIComponent(authUrl.searchParams.get("state")),{headers:{cookie:flowCookie},redirect:"manual"});
+      assert.equal(callback.status,303,id+" callback should finish with a safe frontend redirect");
+      assert.match(callback.headers.get("location")||"",/oauth=success/,id+" callback should report success");
+      const signedInCookie=cookieFrom(callback);
+      assert.ok(signedInCookie,id+" callback should create a new authenticated session");
+      const me=await request("/api/auth/me",{headers:{cookie:signedInCookie}});
+      assert.equal(me.status,200,id+" OAuth session should authenticate against the API");
+      assert.ok((await me.json()).user,id+" OAuth callback should create a local account");
+    }
+
     assert.ok(providerList.some(provider=>provider.id==="apple"&&provider.enabled),"Apple should enable with a valid Services ID and private key");
     const appleStart=await request("/api/auth/oauth/apple",{redirect:"manual"});
     assert.equal(appleStart.status,302);
@@ -67,6 +103,12 @@ async function main() {
     assert.equal(appleUrl.searchParams.get("state")?.length,64,"Apple flow should use session-bound state");
     assert.ok(providerList.some(provider=>provider.id==="supercell"&&!provider.enabled),"Supercell ID should remain unavailable without a documented compatible provider flow");
     assert.equal((await request("/api/auth/oauth/supercell")).status,503);
+    const badOrigin=spawnSync(process.execPath,[path.join(__dirname,"..","server.js")],{encoding:"utf8",timeout:5000,env:{...process.env,NODE_ENV:"production",SESSION_SECRET:"R".repeat(64),APP_ORIGIN:"http://example.invalid",PORT:"0",DATA_DIR:path.join(dataDir,"production-guard-origin")}});
+    assert.notEqual(badOrigin.status,0,"production should refuse an insecure frontend origin");
+    assert.match(badOrigin.stderr,/APP_ORIGIN must be the exact HTTPS frontend origin/,"production origin error should be actionable");
+    const placeholderSecret=spawnSync(process.execPath,[path.join(__dirname,"..","server.js")],{encoding:"utf8",timeout:5000,env:{...process.env,NODE_ENV:"production",SESSION_SECRET:"replace-with-a-long-random-secret-before-production",APP_ORIGIN:"https://frontend.example.invalid",PORT:"0",DATA_DIR:path.join(dataDir,"production-guard-secret")}});
+    assert.notEqual(placeholderSecret.status,0,"production should refuse placeholder session secrets");
+    assert.match(placeholderSecret.stderr,/Set SESSION_SECRET to a real random secret/,"production secret error should be actionable");
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
     const username="ci_"+Date.now().toString(36), password="Test-password-2026!";
@@ -144,6 +186,7 @@ async function main() {
   } finally {
     if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve));child.kill("SIGTERM");await Promise.race([exited,delay(1500)]);if(child.exitCode===null)child.kill("SIGKILL");}
     await fs.rm(dataDir,{recursive:true,force:true});
+    await new Promise(resolve=>providerStub.close(()=>resolve()));
   }
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
