@@ -105,8 +105,8 @@ async function main() {
     assert.equal(appleUrl.searchParams.get("response_mode"),"form_post");
     assert.match(appleUrl.searchParams.get("nonce")||"",/^[A-Za-z0-9_-]{43}$/,"Apple flow should use a fresh nonce");
     assert.equal(appleUrl.searchParams.get("state")?.length,64,"Apple flow should use session-bound state");
-    assert.ok(providerList.some(provider=>provider.id==="supercell"&&!provider.enabled),"Supercell ID should remain unavailable without a documented compatible provider flow");
-    assert.equal((await request("/api/auth/oauth/supercell")).status,503);
+    assert.ok(!providerList.some(provider=>provider.id==="supercell"),"unsupported sign-in providers must not be shown in the public provider list");
+    assert.equal((await request("/api/auth/oauth/supercell")).status,503,"unsupported sign-in providers must remain blocked");
     const badOrigin=spawnSync(process.execPath,[path.join(__dirname,"..","server.js")],{encoding:"utf8",timeout:5000,env:{...process.env,NODE_ENV:"production",SESSION_SECRET:"R".repeat(64),APP_ORIGIN:"http://example.invalid",PORT:"0",DATA_DIR:path.join(dataDir,"production-guard-origin")}});
     assert.notEqual(badOrigin.status,0,"production should refuse an insecure frontend origin");
     assert.match(badOrigin.stderr,/APP_ORIGIN must be the exact HTTPS frontend origin/,"production origin error should be actionable");
