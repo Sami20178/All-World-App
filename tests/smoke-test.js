@@ -51,7 +51,7 @@ async function main() {
   });
   const cookieFrom = response => {
     const value = response.headers.get("set-cookie") || "";
-    const match = value.match(/allworld\\.sid=[^;]*/);
+    const match = value.match(/allworld\.sid=[^;]*/);
     return match ? match[0] : "";
   };
 
@@ -93,7 +93,7 @@ async function main() {
       const storedUser = database.prepare("SELECT username, password_hash FROM users WHERE username_normalized = ?").get(username.toLowerCase());
       assert.ok(storedUser, "registered account should be persisted in SQLite");
       assert.notEqual(storedUser.password_hash, password, "password must never be stored in plain text");
-      assert.match(storedUser.password_hash, /^\\$2[aby]\\$/i, "stored password should be a bcrypt hash");
+      assert.match(storedUser.password_hash, /^\$2[aby]\$/i, "stored password should be a bcrypt hash");
     } finally {
       database.close();
     }
