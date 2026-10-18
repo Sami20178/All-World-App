@@ -2,8 +2,8 @@ name: All World Cloudflare API smoke test
 
 on:
   push:
-    paths:
-      - ".github/workflows/check-cloudflare-api.yml"
+    branches:
+      - main
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
