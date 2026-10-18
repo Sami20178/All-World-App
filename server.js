@@ -38,7 +38,7 @@ app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 const authLimiter = rateLimit({ windowMs: 15*60*1000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "Zu viele Versuche. Bitte warte kurz und versuche es erneut." } });
 const usernamePattern = /^[a-zA-Z0-9_-]{3,32}$/;
-const emailPattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 let db;
 class SqliteSessionStore extends session.Store {
  get(sid, cb) { try { const row=db.prepare("SELECT sess,expires FROM sessions WHERE sid=?").get(sid); if(!row)return cb(null,null); if(row.expires<=Date.now()){db.prepare("DELETE FROM sessions WHERE sid=?").run(sid);return cb(null,null);} cb(null,JSON.parse(row.sess)); } catch(e){cb(e);} }
