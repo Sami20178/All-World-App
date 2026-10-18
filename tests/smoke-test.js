@@ -115,8 +115,9 @@ async function main() {
     assert.match(placeholderSecret.stderr,/Set SESSION_SECRET to a real random secret/,"production secret error should be actionable");
 
     assert.equal((await jsonRequest("/api/auth/register",{username:"x",password:"short"})).status,400);
-    const username="ci_"+Date.now().toString(36), password="Test-password-2026!";
-    const registered=await jsonRequest("/api/auth/register",{username,password});
+    const username="ci_"+Date.now().toString(36), password="Test-password-2026!", email=username+"@example.test";
+    assert.equal((await jsonRequest("/api/auth/register",{username,email:"not-an-email",password})).status,400,"invalid email must be rejected");
+    const registered=await jsonRequest("/api/auth/register",{username,email,password});
     assert.equal(registered.status,201);
     const first=(await registered.json()).user; let firstCookie=cookieFrom(registered);
     assert.ok(firstCookie,"registration should set a session cookie");
@@ -125,14 +126,17 @@ async function main() {
     await fs.access(dbPath);
     let database=new Database(dbPath,{readonly:true});
     try {
-      const stored=database.prepare("SELECT username,password_hash FROM users WHERE username_normalized=?").get(username.toLowerCase());
+      const stored=database.prepare("SELECT username,email,email_normalized,password_hash FROM users WHERE username_normalized=?").get(username.toLowerCase());
       assert.ok(stored,"account should be saved in SQLite");
+      assert.equal(stored.email,email,"email should persist in SQLite");
+      assert.equal(stored.email_normalized,email.toLowerCase(),"email uniqueness should be case-insensitive");
       assert.notEqual(stored.password_hash,password,"password must not be plaintext");
       assert.match(stored.password_hash,/^\$2[aby]\$/i,"password should be bcrypt hashed");
       assert.ok(database.prepare("SELECT sid FROM sessions WHERE user_id=?").get(first.id),"session should be stored persistently");
     } finally { database.close(); }
 
-    assert.equal((await jsonRequest("/api/auth/register",{username,password})).status,409);
+    assert.equal((await jsonRequest("/api/auth/register",{username,password,email})).status,409);
+    assert.equal((await jsonRequest("/api/auth/register",{username:username+"_other",password,email:email.toUpperCase()})).status,409,"duplicate email addresses must be rejected case-insensitively");
     assert.equal((await request("/api/auth/me",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await request("/api/account",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await jsonRequest("/api/auth/logout",{},firstCookie)).status,200);
@@ -140,8 +144,8 @@ async function main() {
 
     const badLogin=await jsonRequest("/api/auth/login",{username,password:"incorrect-password"});
     assert.equal(badLogin.status,401);
-    const login=await jsonRequest("/api/auth/login",{username,password});
-    assert.equal(login.status,200);
+    const login=await jsonRequest("/api/auth/login",{username:email,password});
+    assert.equal(login.status,200,"email address should work as the login identifier");
     const loginCookie=cookieFrom(login);
     assert.ok(loginCookie,"login should create a session after logout");
     assert.equal((await jsonRequest("/api/auth/logout",{},loginCookie)).status,200);
@@ -149,8 +153,8 @@ async function main() {
     assert.equal(reloginFirst.status,200);
     firstCookie=cookieFrom(reloginFirst);
 
-    const secondName="ci_second_"+Date.now().toString(36), secondPassword="Second-password-2026!";
-    const secondReg=await jsonRequest("/api/auth/register",{username:secondName,password:secondPassword});
+    const secondName="ci_second_"+Date.now().toString(36), secondPassword="Second-password-2026!", secondEmail=secondName+"@example.test";
+    const secondReg=await jsonRequest("/api/auth/register",{username:secondName,email:secondEmail,password:secondPassword});
     assert.equal(secondReg.status,201);
     const second=(await secondReg.json()).user, secondCookie=cookieFrom(secondReg);
     const relink=await jsonRequest("/api/auth/link",{username:secondName,password:secondPassword},firstCookie);
