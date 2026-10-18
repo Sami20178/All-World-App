@@ -1,13 +1,19 @@
 {
   "name": "all-world-app-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "All World Node.js API and authentication server",
   "main": "server.js",
   "scripts": {
+    "dev": "node --watch server.js",
     "start": "node server.js",
+    "start:prod": "NODE_ENV=production node server.js",
     "check": "node --check server.js",
-    "test": "node tests/smoke-test.js"
+    "lint": "node --check server.js",
+    "test": "node tests/smoke-test.js",
+    "docker:build": "docker build -t all-world-app:latest .",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down -v"
   },
   "engines": {
     "node": ">=20"
