@@ -222,6 +222,11 @@ app.post("/api/auth/oauth/:provider/unlink", requireLogin, (req,res,next) => {
  try { const result=db.prepare("DELETE FROM oauth_identities WHERE provider=? AND user_id=?").run(slug,req.session.userId); if(!result.changes)return res.status(404).json({error:"Für diesen Anbieter ist kein Login verbunden."}); res.json({ok:true}); } catch(e){next(e);}
 });
 
+// Read-only connection endpoints for the All World ChatGPT plugin.
+// These endpoints expose project metadata only; they never expose account or database records.
+app.get("/api/plugin/health", (_req,res)=>res.json({ok:true,service:"all-world-api",integration:"all-world-plugin",apiVersion:"v1",mode:"read-only"}));
+app.get("/api/plugin/site-info", (_req,res)=>res.json({name:"All World",website:"https://all-world-app-source-code.docc-samisoliman.workers.dev/",sourceRepository:"https://github.com/Sami20178/All-World-App-Source-Code-",apiRepository:"https://github.com/Sami20178/All-World-App",capabilities:["health","site-info"],writable:false}));
+
 app.use((req,res)=>res.status(404).json({error:"API-Endpunkt nicht gefunden."}));
 app.use((e,_req,res,_next)=>{console.error("API error:",e.message);if(res.headersSent)return;res.status(500).json({error:"Interner Serverfehler."});});
 initializeDatabase().then(()=>{const server=app.listen(PORT,"0.0.0.0",()=>console.log("All World API listening on port "+PORT));const shutdown=()=>server.close(()=>{if(db)db.close();process.exit(0);});process.once("SIGTERM",shutdown);process.once("SIGINT",shutdown);}).catch(e=>{console.error("Database initialization failed:",e.message);process.exitCode=1;});
