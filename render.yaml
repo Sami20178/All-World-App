@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: all-world-app-api
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: all-world-api-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ORIGIN
+        value: https://all-world-app-source-code.docc-samisoliman.workers.dev
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: OAUTH_PROVIDERS_JSON
+        sync: false
