@@ -28,7 +28,7 @@ class FakeD1 {
 }
 
 const ORIGIN = "https://app.example.test";
-function env() { return { AUTH_DB: new FakeD1(), APP_ORIGIN: ORIGIN }; }
+function env() { return { AUTH_DB: new FakeD1(), APP_ORIGIN: ORIGIN, RATE_LIMIT_SECRET: "test-only-rate-limit-secret-32-bytes" }; }
 function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!headers.has("Origin")) headers.set("Origin", ORIGIN);
