@@ -60,7 +60,7 @@ async function handle(request,env) {
   }
   if(request.method==="GET" && path==="/mcp/chatgpt") {
     const launch=url.searchParams.get("launch");
-    if(!launch || launch.length>100) return html(page("Plugin-Seite nicht direkt verfügbar",`<p>Diese Einstellungsseite lässt sich nur über einen kurzlebigen Link aus dem All-World-MCP-Plugin öffnen.</p><p>Rufe in ChatGPT das Tool <code>open_plugin_settings</code> auf, um einen einmaligen Zugriffslink zu erhalten.</p><meta name="robots" content="noindex,nofollow,noarchive">`),404);
+    if(!launch || launch.length>100) return new Response(page("Plugin-Seite nicht direkt verfügbar",`<p>Diese Einstellungsseite lässt sich nur über einen kurzlebigen Link aus dem All-World-MCP-Plugin öffnen.</p><p>Rufe in ChatGPT das Tool <code>open_plugin_settings</code> auf, um einen einmaligen Zugriffslink zu erhalten.</p>`),{status:404,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Robots-Tag":"noindex, nofollow, noarchive, nosnippet","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
     const launchHash=await sha256(launch);
     const row=await env.OAUTH_DB.prepare("DELETE FROM mcp_launches WHERE token_hash=? AND expires_at>? RETURNING token_hash").bind(launchHash,Date.now()).first();
     if(!row) return html(page("Link abgelaufen",`<p>Dieser einmalige Link wurde bereits verwendet oder ist abgelaufen. Öffne das Plugin in ChatGPT und fordere einen neuen Link an.</p>`),410);
