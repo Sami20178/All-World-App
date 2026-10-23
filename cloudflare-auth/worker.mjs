@@ -318,7 +318,8 @@ function parseOAuthProviders(env) {
       nameField: typeof item.nameField === "string" && item.nameField.length <= 120 ? item.nameField : "name",
       userInfoPath: typeof item.userInfoPath === "string" && item.userInfoPath.length <= 120 ? item.userInfoPath : "",
       emailVerifiedField: typeof item.emailVerifiedField === "string" && item.emailVerifiedField.length <= 120 ? item.emailVerifiedField : "",
-      clientIdHeader: typeof item.clientIdHeader === "string" && /^[A-Za-z0-9-]{1,64}$/.test(item.clientIdHeader) ? item.clientIdHeader : "",
+      clientIdHeader: typeof item.clientIdHeader === "string" && /^[A-Za-z0-9-]{1,64}$/.test(item.clientIdHeader) &&
+        !["authorization", "cookie", "host", "content-length", "content-type"].includes(item.clientIdHeader.toLowerCase()) ? item.clientIdHeader : "",
       extraAuthorizeParams
     };
   }
@@ -417,6 +418,8 @@ async function handleOAuthCallback(request, env, db, slug) {
   if (!config || !getAllowedOrigin(env)) {
     return oauthRedirect(env, { oauth_error: "provider_not_configured" }, [clearStateCookie]);
   }
+  const publicApiOrigin = apiOrigin(request, env);
+  if (!publicApiOrigin) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
   const url = new URL(request.url);
   const state = url.searchParams.get("state") || "";
   const cookieState = cookieValue(request, oauthStateCookieName(slug));
@@ -450,7 +453,7 @@ async function handleOAuthCallback(request, env, db, slug) {
   }
 
   try {
-    const callbackUrl = apiOrigin(request, env) + "/api/auth/oauth/" + slug + "/callback";
+    const callbackUrl = publicApiOrigin + "/api/auth/oauth/" + slug + "/callback";
     const tokenBody = new URLSearchParams({
       grant_type: "authorization_code",
       code: url.searchParams.get("code"),
