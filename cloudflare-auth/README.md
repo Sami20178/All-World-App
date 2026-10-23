@@ -17,7 +17,7 @@ Social/OAuth sign-in, email verification, and password reset are not implemented
 
 ## Configuration
 
-Create a dedicated D1 database named all-world-auth and bind it as AUTH_DB. Set APP_ORIGIN to the exact HTTPS origin of the public All World frontend. Set RATE_LIMIT_SECRET as a Cloudflare secret binding to a random value of at least 32 characters; it HMACs rate-limit keys so raw IP addresses are not stored. Do not reuse the existing OAUTH_DB used by the MCP service. Keep credentials and any future provider secrets in Cloudflare secret bindings, never in Git.
+The production deployment uses the dedicated D1 database all-world-auth bound as AUTH_DB. APP_ORIGIN is set to the exact HTTPS origin of the public All World frontend. RATE_LIMIT_SECRET is a Cloudflare secret binding with a random value of at least 32 characters; it HMACs rate-limit keys so raw IP addresses are not stored. Do not reuse the existing OAUTH_DB used by the MCP service. Keep credentials and any future provider secrets in Cloudflare secret bindings, never in Git.
 
 The Worker code initializes tables with CREATE TABLE IF NOT EXISTS; schema.sql is also provided for review and explicit migrations. The test uses a local SQLite adapter to exercise the Worker request handler without modifying production data.
 
