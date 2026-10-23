@@ -105,12 +105,14 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
 
   const login = await worker.fetch(request("/api/auth/login", {
     method: "POST",
-    headers: { "CF-Connecting-IP": "192.0.2.17" },
+    headers: { Cookie: firstCookie, "CF-Connecting-IP": "192.0.2.17" },
     body: JSON.stringify({ username: email, password })
   }), bindings);
   assert.equal(login.status, 200, "email login must work");
   const loginCookie = cookieFrom(login);
   assert.match(loginCookie, /^allworld\.sid=/);
+  const oldSession = await worker.fetch(request("/api/auth/me", { headers: { Cookie: firstCookie } }), bindings);
+  assert.equal((await body(oldSession)).user, null, "login must revoke the previous session token");
 
   const saved = await worker.fetch(request("/api/account/data", {
     method: "POST",
@@ -139,12 +141,61 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
   assert.equal(removed.status, 200);
   assert.equal((await body(await worker.fetch(request("/api/account/data", { headers: { Cookie: loginCookie } }), bindings))).items.length, 0);
 
+  const secondEmail = "second@example.test";
+  const secondPassword = "Another-long-test-password!";
+  const secondRegistered = await worker.fetch(request("/api/auth/register", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": "192.0.2.18" },
+    body: JSON.stringify({ username: "second_user", email: secondEmail, password: secondPassword })
+  }), bindings);
+  assert.equal(secondRegistered.status, 201);
+  const secondUser = (await body(secondRegistered)).user;
+
+  const linked = await worker.fetch(request("/api/auth/link", {
+    method: "POST",
+    headers: { Cookie: loginCookie, "CF-Connecting-IP": "192.0.2.19" },
+    body: JSON.stringify({ username: "second_user", password: secondPassword })
+  }), bindings);
+  assert.equal(linked.status, 201);
+  const linkedAccounts = await worker.fetch(request("/api/auth/linked", { headers: { Cookie: loginCookie } }), bindings);
+  assert.equal((await body(linkedAccounts)).accounts.length, 2);
+
+  const switched = await worker.fetch(request("/api/auth/switch", {
+    method: "POST",
+    headers: { Cookie: loginCookie },
+    body: JSON.stringify({ accountId: secondUser.id })
+  }), bindings);
+  assert.equal(switched.status, 200);
+  const switchedCookie = cookieFrom(switched);
+  assert.equal((await body(await worker.fetch(request("/api/auth/me", { headers: { Cookie: switchedCookie } }), bindings))).user.username, "second_user");
+
+  const deleted = await worker.fetch(request("/api/account", {
+    method: "DELETE",
+    headers: { Cookie: switchedCookie },
+    body: JSON.stringify({ password: secondPassword })
+  }), bindings);
+  assert.equal(deleted.status, 200);
+  assert.equal((await body(deleted)).deleted, true);
+  const deletedAccountLogin = await worker.fetch(request("/api/auth/login", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": "192.0.2.21" },
+    body: JSON.stringify({ username: secondEmail, password: secondPassword })
+  }), bindings);
+  assert.equal(deletedAccountLogin.status, 401, "deleted accounts must no longer be able to log in");
+
+  const freshFirstLogin = await worker.fetch(request("/api/auth/login", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": "192.0.2.22" },
+    body: JSON.stringify({ username: "sample_user", password })
+  }), bindings);
+  assert.equal(freshFirstLogin.status, 200);
+  const freshFirstCookie = cookieFrom(freshFirstLogin);
   const logout = await worker.fetch(request("/api/auth/logout", {
     method: "POST",
-    headers: { Cookie: loginCookie }
+    headers: { Cookie: freshFirstCookie }
   }), bindings);
   assert.equal(logout.status, 200);
-  const afterLogout = await worker.fetch(request("/api/auth/me", { headers: { Cookie: cookieFrom(logout) } }), bindings);
+  const afterLogout = await worker.fetch(request("/api/auth/me", { headers: { Cookie: freshFirstCookie } }), bindings);
   assert.equal((await body(afterLogout)).user, null);
 
   const providers = await worker.fetch(request("/api/auth/providers"), bindings);
