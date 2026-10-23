@@ -30,3 +30,11 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Ein gemeinsamer App-Release darf erst als veröffentlicht bezeichnet werden, wenn eine echte, erfolgreich gebaute und angemessen geprüfte Android-APK vorhanden ist und die zugehörigen Release-Assets/Links tatsächlich funktionieren.
 - Der Server-Release dokumentiert die Server-Änderungen und verweist auf die passende Frontend-Release. APK/AAB dürfen nur als echte Build-Dateien angehängt werden, nicht als Platzhalter.
 - Keine Geheimnisse, Tokens, `.env`-Dateien oder Nutzerdaten einchecken.
+
+## Aktueller Versionsstatus 2026-10-23 19:34 UTC
+
+- GitHub-API-Prüfung: keine Tags und keine Releases im Server- oder Frontend-Repository. Nächste gemeinsame App-Version bleibt `First Classic 0.0.0.0`.
+- Aktueller Backend-Commit: [`c6126800164cc8b5b8c5b7e238eae3298368fbd4`](https://github.com/Sami20178/All-World-App/commit/c6126800164cc8b5b8c5b7e238eae3298368fbd4). Node-Server-, Cloudflare-Auth-, API-CI- und MCP-OAuth-Smoke-Workflows waren erfolgreich.
+- Cloudflare-Auth-Worker ist mit D1-Schema aktiv; `OAUTH_PROVIDERS_JSON` fehlt, daher sind externe OAuth-Anbieter nicht aktiviert. Externe HTTP-/End-to-End-Tests sind noch offen.
+- Das Android-Artefakt gehört zum Frontend-Repository und ist eine temporäre Debug-APK, kein Server-Binary. Wegen fehlender Geräteinstallation und nicht abgeschlossener Live-Tests wurde kein Release angelegt.
+- Der neue Frontend-Deployment-Workflow konnte wegen des fehlenden GitHub-Secrets `CLOUDFLARE_API_TOKEN` nicht deployen. Der Server-Release bleibt ebenfalls unveröffentlicht.
