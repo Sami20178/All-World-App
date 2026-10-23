@@ -91,8 +91,9 @@ async function handle(request,env) {
     const client=await registeredClient(env,p.get("client_id"),p.get("redirect_uri"));
     if(!client||!p.get("code")||!p.get("code_verifier")) return json({error:"invalid_grant"},400);
     const codeHash=await sha256(p.get("code"));
-    const code=await env.OAUTH_DB.prepare("DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND expires_at>? RETURNING code_hash,code_challenge,scope").bind(codeHash,client.client_id,p.get("redirect_uri"),Date.now()).first();
-    if(!code||await sha256(p.get("code_verifier"))!==code.code_challenge) return json({error:"invalid_grant"},400);
+    const verifierChallenge=await sha256(p.get("code_verifier"));
+    const code=await env.OAUTH_DB.prepare("DELETE FROM oauth_codes WHERE code_hash=? AND client_id=? AND redirect_uri=? AND code_challenge=? AND expires_at>? RETURNING code_hash,scope").bind(codeHash,client.client_id,p.get("redirect_uri"),verifierChallenge,Date.now()).first();
+    if(!code) return json({error:"invalid_grant"},400);
     const access=randomToken(32), expires=Date.now()+3600000;
     await env.OAUTH_DB.prepare("INSERT INTO oauth_tokens(token_hash,client_id,scope,resource,expires_at) VALUES(?,?,?,?,?)").bind(await sha256(access),client.client_id,code.scope,RESOURCE,expires).run();
     return json({access_token:access,token_type:"Bearer",expires_in:3600,scope:code.scope,resource:RESOURCE});
