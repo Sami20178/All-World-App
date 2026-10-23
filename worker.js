@@ -10,12 +10,14 @@ const CORS = {
 };
 const TOOLS = [
   {name:"get_api_health",description:"Read the public health status of the All World API.",inputSchema:{type:"object",properties:{},additionalProperties:false}},
-  {name:"get_site_info",description:"Read public All World website and repository metadata.",inputSchema:{type:"object",properties:{},additionalProperties:false}}
+  {name:"get_site_info",description:"Read public All World website and repository metadata.",inputSchema:{type:"object",properties:{},additionalProperties:false}},
+  {name:"open_plugin_settings",description:"Create a short-lived, one-time link to the private All World ChatGPT plugin settings page. Return this link to the user to open in a browser.",inputSchema:{type:"object",properties:{},additionalProperties:false}}
 ];
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS oauth_clients (client_id TEXT PRIMARY KEY, client_name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS oauth_codes (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, scope TEXT NOT NULL, expires_at INTEGER NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS oauth_tokens (token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, scope TEXT NOT NULL, resource TEXT NOT NULL, expires_at INTEGER NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS oauth_tokens (token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, scope TEXT NOT NULL, resource TEXT NOT NULL, expires_at INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS mcp_launches (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)"
 ];
 let schemaReady;
 async function init(env) {
@@ -49,8 +51,22 @@ async function handle(request,env) {
   await init(env);
   const url=new URL(request.url), path=url.pathname;
   if(request.method==="OPTIONS") return new Response(null,{status:204,headers:CORS});
+  if(request.method==="GET" && path==="/mcp") {
+    return new Response(null,{status:302,headers:{...CORS,Location:BASE+"/mcp/"}});
+  }
+  if(request.method==="GET" && path==="/mcp/") {
+    return html(page("All World MCP Marketplace",`<p>Entdecke und verwalte All-World-MCP-Verbindungen.</p><p><a class="button" href="/mcp/chatgpt">Plugin-Informationen</a></p><p>Der MCP-Endpunkt ist <code>${RESOURCE}</code>. Aktuell verfügbare Tools sind öffentliche Lesezugriffe.</p>`));
+  }
   if(request.method==="GET" && path==="/mcp/chatgpt") {
-    return html(page("Mit ChatGPT verbinden",`<p>Diese Verbindung stellt ChatGPT zwei öffentliche, schreibgeschützte All-World-Werkzeuge bereit.</p><div class="box"><strong>MCP-Endpunkt</strong><br>${RESOURCE}</div><p>Beim Verbinden wird ein OAuth-Client registriert und du bestätigst den Zugriff. Es werden keine All-World-Kontodaten oder privaten Daten freigegeben.</p><ol><li>In ChatGPT eine eigene MCP-App/Verbindung hinzufügen (sofern diese Funktion in deinem Konto verfügbar ist).</li><li>Als Serveradresse <code>${RESOURCE}</code> verwenden.</li><li>Den von ChatGPT gestarteten OAuth-Ablauf bestätigen.</li></ol><p>Werkzeuge: <code>get_api_health</code>, <code>get_site_info</code>.</p><p><a href="/.well-known/oauth-protected-resource">Ressourcenmetadaten</a> · <a href="/.well-known/oauth-authorization-server">OAuth-Metadaten</a></p>`));
+    const launch=url.searchParams.get("launch");
+    if(!launch || launch.length>100) return html(page("Plugin-Seite nicht direkt verfügbar",`<p>Diese Einstellungsseite lässt sich nur über einen kurzlebigen Link aus dem All-World-MCP-Plugin öffnen.</p><p>Rufe in ChatGPT das Tool <code>open_plugin_settings</code> auf, um einen einmaligen Zugriffslink zu erhalten.</p><meta name="robots" content="noindex,nofollow,noarchive">`),404);
+    const launchHash=await sha256(launch);
+    const row=await env.OAUTH_DB.prepare("DELETE FROM mcp_launches WHERE token_hash=? AND expires_at>? RETURNING token_hash").bind(launchHash,Date.now()).first();
+    if(!row) return html(page("Link abgelaufen",`<p>Dieser einmalige Link wurde bereits verwendet oder ist abgelaufen. Öffne das Plugin in ChatGPT und fordere einen neuen Link an.</p>`),410);
+    const asset=await fetch("https://raw.githubusercontent.com/Sami20178/All-World-App-Source-Code-/main/mcp/chatgpt.html",{headers:{"Accept":"text/html"}});
+    if(!asset.ok) return html(page("Plugin-Seite vorübergehend nicht verfügbar","<p>Bitte versuche es später erneut.</p>"),502);
+    const headers=new Headers({"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, private","X-Robots-Tag":"noindex, nofollow, noarchive, nosnippet","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"});
+    return new Response(await asset.text(),{status:200,headers});
   }
   if(request.method==="GET" && (path==="/.well-known/oauth-protected-resource" || path==="/.well-known/oauth-protected-resource/mcp" || path==="/mcp/.well-known/oauth-protected-resource")) {
     return json({resource:RESOURCE,authorization_servers:[BASE],scopes_supported:SCOPES,bearer_methods_supported:["header"],resource_documentation:BASE+"/mcp/chatgpt"});
@@ -115,6 +131,11 @@ async function handle(request,env) {
       let data;
       if(params.name==="get_api_health") data={ok:true,service:"All World API",status:"healthy",endpoints:["/api/plugin/health","/api/plugin/site-info"]};
       else if(params.name==="get_site_info") data={name:"All World",website:"https://all-world-app-source-code.docc-samisoliman.workers.dev/",source_repository:"https://github.com/Sami20178/All-World-App-Source-Code-",node_server_repository:"https://github.com/Sami20178/All-World-App",api_version:"1.1.0",capabilities:["public-site-metadata","health-check"],authentication:"OAuth required for MCP; tools are public read-only"};
+      else if(params.name==="open_plugin_settings") {
+        const launch=randomToken(32), expires=Date.now()+300000;
+        await env.OAUTH_DB.prepare("INSERT INTO mcp_launches(token_hash,expires_at) VALUES(?,?)").bind(await sha256(launch),expires).run();
+        data={url:BASE+"/mcp/chatgpt?launch="+launch,expires_in_seconds:300,one_time:true,instructions:"Open this URL in a browser. The link expires in 5 minutes and works once. Current account-management settings are a preview; unsupported actions are not enabled."};
+      }
       else return json({jsonrpc:"2.0",id,error:{code:-32602,message:"Unknown tool name"}},400);
       return json({jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(data)}],structuredContent:data}});
     }
