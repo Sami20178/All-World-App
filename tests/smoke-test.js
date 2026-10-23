@@ -137,6 +137,11 @@ async function main() {
 
     assert.equal((await jsonRequest("/api/auth/register",{username,password,email})).status,409);
     assert.equal((await jsonRequest("/api/auth/register",{username:username+"_other",password,email:email.toUpperCase()})).status,409,"duplicate email addresses must be rejected case-insensitively");
+    const usernameOnly="ci_username_only_"+Date.now().toString(36), usernameOnlyPassword="Username-only-password-2026!";
+    const usernameOnlyReg=await jsonRequest("/api/auth/register",{username:usernameOnly,password:usernameOnlyPassword});
+    assert.equal(usernameOnlyReg.status,201,"email should be optional for username/password registration");
+    const usernameOnlyLogin=await jsonRequest("/api/auth/login",{username:usernameOnly,password:usernameOnlyPassword});
+    assert.equal(usernameOnlyLogin.status,200,"username-only accounts should still log in");
     assert.equal((await request("/api/auth/me",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await request("/api/account",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await jsonRequest("/api/auth/logout",{},firstCookie)).status,200);
