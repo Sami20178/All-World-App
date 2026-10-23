@@ -4,9 +4,9 @@
 
 Die API speichert Konten dauerhaft in SQLite: `data/all-world.sqlite` (oder im Pfad aus `DATABASE_FILE`). Passwörter werden mit bcrypt gehasht. Benutzernamen sind unabhängig von Groß-/Kleinschreibung eindeutig.
 
-- `POST /api/auth/register` — Konto mit eindeutigem Benutzernamen, E-Mail-Adresse und Passwort erstellen und anmelden
+- `POST /api/auth/register` — Konto mit eindeutigem Benutzernamen und Passwort erstellen; E-Mail ist optional und ermöglicht zusätzlich Login per E-Mail
 - `POST /api/auth/login` — mit Benutzername oder E-Mail-Adresse und Passwort anmelden; ein Konto bleibt nach dem Abmelden gespeichert
-- E-Mail-Adressen werden normalisiert und eindeutig gespeichert; bestehende SQLite-Datenbanken erhalten die neuen E-Mail-Spalten per additiver Migration, ohne vorhandene Konten zu löschen.
+- Wenn eine E-Mail angegeben wird, wird sie normalisiert und eindeutig gespeichert; bestehende SQLite-Datenbanken erhalten die neuen E-Mail-Spalten per additiver Migration, ohne vorhandene Konten zu löschen.
 - `GET /api/auth/me` — angemeldetes Konto ermitteln
 - `POST /api/auth/logout` — Sitzung beenden, Konto nicht löschen
 - `GET /api/auth/linked` — verbundenen Konten anzeigen
