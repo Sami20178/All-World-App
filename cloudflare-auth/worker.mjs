@@ -216,9 +216,19 @@ async function currentSession(request, env) {
   return { user: row, tokenHash };
 }
 
+async function rateLimitKey(env, value) {
+  const secret = String(env.RATE_LIMIT_SECRET || "");
+  if (secret.length < 32) throw new Error("RATE_LIMIT_SECRET missing");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), {
+    name: "HMAC",
+    hash: "SHA-256"
+  }, false, ["sign"]);
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value))));
+}
+
 async function consumeRateLimit(request, env, action, identity, limit) {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const key = await sha256(ip + "|" + action + "|" + String(identity || "").toLowerCase());
+  const key = await rateLimitKey(env, ip + "|" + action + "|" + String(identity || "").toLowerCase());
   const now = Date.now();
   const cutoff = now - RATE_WINDOW;
   await env.AUTH_DB.prepare(
@@ -253,6 +263,9 @@ async function handle(request, env) {
 
   if (request.method === "GET" && (path === "/api/health" || path === "/api/ready")) {
     try {
+      if (String(env.RATE_LIMIT_SECRET || "").length < 32) {
+        return json(request, env, { ok: false, ready: false, error: "Rate-Limit-Geheimnis ist nicht sicher konfiguriert." }, 503);
+      }
       await ensureSchema(env.AUTH_DB);
       await env.AUTH_DB.prepare("SELECT 1 AS ok").first();
       return json(request, env, { ok: true, ready: true, service: "all-world-auth-api" });
@@ -264,6 +277,10 @@ async function handle(request, env) {
   if (["POST", "PUT", "DELETE", "PATCH"].includes(request.method)) {
     if (!getAllowedOrigin(env)) return json(request, env, { error: "APP_ORIGIN ist nicht als sichere HTTPS-Origin konfiguriert." }, 503);
     if (!originAllowed(request, env)) return json(request, env, { error: "Anfrage-Origin nicht erlaubt." }, 403);
+  }
+
+  if (String(env.RATE_LIMIT_SECRET || "").length < 32) {
+    return json(request, env, { error: "Rate-Limit-Geheimnis ist nicht sicher konfiguriert." }, 503);
   }
 
   try {
