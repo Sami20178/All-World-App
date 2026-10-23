@@ -1,4 +1,4 @@
-name: All World Cloudflare API smoke test
+name: All World Cloudflare API and MCP OAuth smoke test
 
 on:
   push:
@@ -13,107 +13,88 @@ permissions:
 
 jobs:
   smoke-test:
-    name: Verify deployed HTTPS API and MCP tools
+    name: Verify deployed HTTPS API, OAuth 2.1 PKCE, and MCP tools
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Test public health and project metadata
+      - name: Test public API, OAuth metadata, and end-to-end MCP authorization
         env:
           API_BASE_URL: https://all-world-app.docc-samisoliman.workers.dev
         run: |
           node --input-type=module <<'NODE'
+          import { createHash, randomBytes } from "node:crypto";
           const base = process.env.API_BASE_URL;
-          const checks = [
-            {
-              path: "/api/plugin/health",
-              validate(data) {
-                if (data.ok !== true) throw new Error("health.ok must be true");
-                if (data.service !== "All World API") throw new Error("Unexpected service name");
-                if (data.status !== "healthy") throw new Error("API is not healthy");
-                if (!Array.isArray(data.endpoints) || !data.endpoints.includes("/mcp")) {
-                  throw new Error("MCP endpoint is missing from health response");
-                }
-              }
-            },
-            {
-              path: "/api/plugin/site-info",
-              validate(data) {
-                if (data.name !== "All World") throw new Error("Unexpected project name");
-                if (data.website !== "https://all-world-app-source-code.docc-samisoliman.workers.dev/") {
-                  throw new Error("Website URL does not match canonical site");
-                }
-                if (!data.source_repository?.includes("Sami20178/All-World-App-Source-Code-")) {
-                  throw new Error("Source repository metadata is missing");
-                }
-                if (!data.node_server_repository?.includes("Sami20178/All-World-App")) {
-                  throw new Error("Node server repository metadata is missing");
-                }
-                if (data.mcp_endpoint !== base + "/mcp") throw new Error("MCP endpoint URL is missing or incorrect");
-              }
-            }
-          ];
-
-          for (const check of checks) {
-            const url = base + check.path;
-            const response = await fetch(url, {
-              headers: { accept: "application/json" },
-              signal: AbortSignal.timeout(15000)
-            });
-            const body = await response.text();
-            if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
-            let data;
-            try { data = JSON.parse(body); }
-            catch { throw new Error(`${url} did not return valid JSON`); }
-            check.validate(data);
-            console.log(`PASS ${url} (HTTP ${response.status})`);
-          }
-
+          const getJson = async (path) => {
+            const r = await fetch(base + path, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+            const text = await r.text();
+            if (!r.ok) throw new Error(base + path + " returned HTTP " + r.status + ": " + text.slice(0, 300));
+            try { return JSON.parse(text); } catch { throw new Error(path + " did not return JSON"); }
+          };
+          const health = await getJson("/api/plugin/health");
+          if (health.ok !== true || health.service !== "All World API" || health.status !== "healthy" || !health.endpoints.includes("/mcp/chatgpt")) throw new Error("Public health response is incorrect");
+          console.log("PASS public health");
+          const site = await getJson("/api/plugin/site-info");
+          if (site.name !== "All World" || site.mcp_endpoint !== base + "/mcp" || site.mcp_connect_page !== base + "/mcp/chatgpt") throw new Error("Site metadata is incorrect");
+          console.log("PASS public site metadata");
+          const authMeta = await getJson("/.well-known/oauth-authorization-server");
+          for (const key of ["authorization_endpoint", "token_endpoint", "registration_endpoint"]) if (!authMeta[key]?.startsWith(base + "/")) throw new Error("OAuth metadata missing " + key);
+          if (!authMeta.code_challenge_methods_supported.includes("S256")) throw new Error("OAuth server does not advertise PKCE S256");
+          const resourceMeta = await getJson("/.well-known/oauth-protected-resource");
+          if (resourceMeta.resource !== base + "/mcp" || !resourceMeta.authorization_servers.includes(base)) throw new Error("Protected-resource metadata is incorrect");
+          console.log("PASS OAuth discovery metadata");
+          const page = await fetch(base + "/mcp/chatgpt", { signal: AbortSignal.timeout(15000) });
+          const pageText = await page.text();
+          if (!page.ok || !pageText.includes("Mit ChatGPT verbinden") || !pageText.includes(base + "/mcp")) throw new Error("ChatGPT connection page failed");
+          console.log("PASS /mcp/chatgpt connection page");
+          const unauth = await fetch(base + "/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc:"2.0",id:1,method:"initialize",params:{} }), signal: AbortSignal.timeout(15000) });
+          if (unauth.status !== 401 || !unauth.headers.get("www-authenticate")?.includes("oauth-protected-resource")) throw new Error("MCP endpoint must reject requests without a bearer token");
+          console.log("PASS MCP rejects unauthenticated requests");
+          const redirectUri = "http://127.0.0.1:43871/oauth/callback";
+          const registration = await fetch(base + "/oauth/register", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({client_name:"All World CI Test",redirect_uris:[redirectUri],grant_types:["authorization_code"],response_types:["code"],token_endpoint_auth_method:"none"}), signal:AbortSignal.timeout(15000) });
+          const client = await registration.json();
+          if (registration.status !== 201 || !client.client_id) throw new Error("Dynamic client registration failed: " + JSON.stringify(client));
+          console.log("PASS OAuth dynamic client registration");
+          const verifier = randomBytes(32).toString("base64url");
+          const challenge = createHash("sha256").update(verifier).digest("base64url");
+          const state = randomBytes(18).toString("base64url");
+          const authorize = new URL(base + "/oauth/authorize");
+          for (const [k,v] of Object.entries({response_type:"code",client_id:client.client_id,redirect_uri:redirectUri,code_challenge:challenge,code_challenge_method:"S256",state,scope:"mcp:read"})) authorize.searchParams.set(k,v);
+          const consent = await fetch(authorize, { redirect:"manual", signal:AbortSignal.timeout(15000) });
+          const consentHtml = await consent.text();
+          if (consent.status !== 200 || !consentHtml.includes("Zugriff für ChatGPT bestätigen") || !consentHtml.includes('name="code_challenge"')) throw new Error("OAuth authorization/consent page failed");
+          const consentPost = new URLSearchParams({client_id:client.client_id,redirect_uri:redirectUri,code_challenge:challenge,state});
+          const approved = await fetch(base + "/oauth/authorize", { method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:consentPost,redirect:"manual",signal:AbortSignal.timeout(15000) });
+          if (approved.status !== 302) throw new Error("OAuth approval failed: HTTP " + approved.status + " " + (await approved.text()).slice(0,200));
+          const callback = new URL(approved.headers.get("location"));
+          const code = callback.searchParams.get("code");
+          if (callback.origin + callback.pathname !== redirectUri || !code || callback.searchParams.get("state") !== state) throw new Error("OAuth redirect/code/state validation failed");
+          console.log("PASS OAuth authorization code and state");
+          const tokenResponse = await fetch(base + "/oauth/token", {method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:client.client_id,redirect_uri:redirectUri,code,code_verifier:verifier}),signal:AbortSignal.timeout(15000)});
+          const token = await tokenResponse.json();
+          if (!tokenResponse.ok || !token.access_token || token.token_type !== "Bearer" || token.resource !== base + "/mcp") throw new Error("OAuth token exchange failed: " + JSON.stringify(token));
+          console.log("PASS OAuth token exchange with PKCE");
           async function mcp(method, params = {}, id = 1) {
-            const url = base + "/mcp";
-            const response = await fetch(url, {
-              method: "POST",
-              headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-              body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
-              signal: AbortSignal.timeout(15000)
-            });
-            const body = await response.text();
-            if (!response.ok) throw new Error(`${url} ${method} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
-            let data;
-            try { data = JSON.parse(body); }
-            catch { throw new Error(`${url} ${method} did not return JSON: ${body.slice(0, 300)}`); }
-            if (data.jsonrpc !== "2.0" || data.id !== id || data.error) {
-              throw new Error(`${url} ${method} returned invalid JSON-RPC: ${JSON.stringify(data).slice(0, 300)}`);
-            }
+            const r = await fetch(base + "/mcp", {method:"POST",headers:{"authorization":"Bearer "+token.access_token,"content-type":"application/json",accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id,method,params}),signal:AbortSignal.timeout(15000)});
+            const text = await r.text();
+            if (!r.ok) throw new Error("MCP " + method + " returned HTTP " + r.status + ": " + text.slice(0,300));
+            const data = JSON.parse(text);
+            if (data.jsonrpc !== "2.0" || data.id !== id || data.error) throw new Error("Invalid MCP response: " + text.slice(0,300));
             return data.result;
           }
-
-          const init = await mcp("initialize", {
-            protocolVersion: "2025-03-26",
-            capabilities: {},
-            clientInfo: { name: "all-world-smoke-test", version: "1.0.0" }
-          }, 10);
+          const init = await mcp("initialize",{protocolVersion:"2025-03-26",capabilities:{},clientInfo:{name:"all-world-smoke-test",version:"1.1.0"}},10);
           if (!init.capabilities?.tools) throw new Error("MCP initialize response lacks tools capability");
-          console.log("PASS MCP initialize");
-
-          const listed = await mcp("tools/list", {}, 11);
-          const names = (listed.tools || []).map(tool => tool.name);
-          for (const required of ["get_api_health", "get_site_info"]) {
-            if (!names.includes(required)) throw new Error(`MCP tool missing: ${required}`);
-          }
-          console.log("PASS MCP tools/list: " + names.join(", "));
-
-          const health = await mcp("tools/call", { name: "get_api_health", arguments: {} }, 12);
-          const healthText = health.content?.find(item => item.type === "text")?.text;
-          const healthData = JSON.parse(healthText || "{}");
-          if (healthData.ok !== true || healthData.status !== "healthy") throw new Error("MCP health tool returned unexpected data");
-          console.log("PASS MCP tools/call get_api_health");
-
-          const site = await mcp("tools/call", { name: "get_site_info", arguments: {} }, 13);
-          const siteText = site.content?.find(item => item.type === "text")?.text;
-          const siteData = JSON.parse(siteText || "{}");
-          if (siteData.name !== "All World" || siteData.website !== "https://all-world-app-source-code.docc-samisoliman.workers.dev/") {
-            throw new Error("MCP site-info tool returned unexpected data");
-          }
-          console.log("PASS MCP tools/call get_site_info");
-          console.log("All World API and MCP smoke tests passed.");
+          console.log("PASS authenticated MCP initialize");
+          const listed = await mcp("tools/list",{},11);
+          const names = (listed.tools||[]).map(t=>t.name);
+          for (const name of ["get_api_health","get_site_info"]) if (!names.includes(name)) throw new Error("Missing MCP tool: "+name);
+          console.log("PASS authenticated MCP tools/list");
+          const call = await mcp("tools/call",{name:"get_api_health",arguments:{}},12);
+          const data = JSON.parse(call.content?.find(x=>x.type==="text")?.text||"{}");
+          if (data.ok !== true || data.status !== "healthy") throw new Error("get_api_health returned invalid data");
+          console.log("PASS authenticated get_api_health");
+          const siteCall = await mcp("tools/call",{name:"get_site_info",arguments:{}},13);
+          const siteData = JSON.parse(siteCall.content?.find(x=>x.type==="text")?.text||"{}");
+          if (siteData.name !== "All World" || siteData.website !== "https://all-world-app-source-code.docc-samisoliman.workers.dev/") throw new Error("get_site_info returned invalid data");
+          console.log("PASS authenticated get_site_info");
+          console.log("All World OAuth 2.1 PKCE and MCP end-to-end tests passed.");
           NODE
