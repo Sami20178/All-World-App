@@ -1,0 +1,31 @@
+name: Cloudflare auth Worker validation
+
+on:
+  push:
+    branches: [main, feature/cloudflare-auth-d1]
+    paths:
+      - "cloudflare-auth/**"
+      - ".github/workflows/cloudflare-auth-ci.yml"
+  pull_request:
+    paths:
+      - "cloudflare-auth/**"
+      - ".github/workflows/cloudflare-auth-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install repository dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check Worker syntax
+        run: node --check cloudflare-auth/worker.mjs
+      - name: Run auth Worker smoke tests
+        run: node --test cloudflare-auth/tests/worker-auth.test.mjs
