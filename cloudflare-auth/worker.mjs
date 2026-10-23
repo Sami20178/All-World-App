@@ -106,7 +106,9 @@ async function ensureSchema(db) {
   if (!db || typeof db.prepare !== "function") throw new Error("AUTH_DB binding missing");
   let promise = schemaPromises.get(db);
   if (!promise) {
-    promise = Promise.all(SCHEMA.map(statement => db.prepare(statement).run()));
+    promise = (async () => {
+      for (const statement of SCHEMA) await db.prepare(statement).run();
+    })();
     schemaPromises.set(db, promise);
   }
   try {
