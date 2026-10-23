@@ -68,7 +68,7 @@ async function handle(request,env) {
     return new Response(PRIVATE_SETTINGS_HTML,{status:200,headers});
   }
   if(request.method==="GET" && (path==="/.well-known/oauth-protected-resource" || path==="/.well-known/oauth-protected-resource/mcp" || path==="/mcp/.well-known/oauth-protected-resource")) {
-    return json({resource:RESOURCE,authorization_servers:[BASE],scopes_supported:SCOPES,bearer_methods_supported:["header"],resource_documentation:BASE+"/mcp/chatgpt"});
+    return json({resource:RESOURCE,authorization_servers:[BASE],scopes_supported:SCOPES,bearer_methods_supported:["header"],resource_documentation:BASE+"/mcp"});
   }
   if(request.method==="GET" && path==="/.well-known/oauth-authorization-server") {
     return json({issuer:BASE,authorization_endpoint:BASE+"/oauth/authorize",token_endpoint:BASE+"/oauth/token",registration_endpoint:BASE+"/oauth/register",response_types_supported:["code"],response_modes_supported:["query"],grant_types_supported:["authorization_code"],code_challenge_methods_supported:["S256"],token_endpoint_auth_methods_supported:["none"],scopes_supported:SCOPES,client_id_metadata_document_supported:false});
@@ -141,7 +141,7 @@ async function handle(request,env) {
     return json({jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}},400);
   }
   if(request.method==="GET"&&path==="/api/plugin/health") return json({ok:true,service:"All World API",status:"healthy",endpoints:["/api/plugin/health","/api/plugin/site-info","/mcp","/mcp/chatgpt"]});
-  if(request.method==="GET"&&path==="/api/plugin/site-info") return json({name:"All World",website:"https://all-world-app-source-code.docc-samisoliman.workers.dev/",source_repository:"https://github.com/Sami20178/All-World-App-Source-Code-",node_server_repository:"https://github.com/Sami20178/All-World-App",api_version:"1.1.0",capabilities:["public-site-metadata","health-check","mcp-oauth-read-only"],mcp_endpoint:RESOURCE,mcp_connect_page:BASE+"/mcp/chatgpt",authentication:"OAuth required for MCP; tools are public read-only"});
+  if(request.method==="GET"&&path==="/api/plugin/site-info") return json({name:"All World",website:"https://all-world-app-source-code.docc-samisoliman.workers.dev/",source_repository:"https://github.com/Sami20178/All-World-App-Source-Code-",node_server_repository:"https://github.com/Sami20178/All-World-App",api_version:"1.1.0",capabilities:["public-site-metadata","health-check","mcp-oauth-read-only"],mcp_endpoint:RESOURCE,mcp_connect_page:BASE+"/mcp",authentication:"OAuth required for MCP; tools are public read-only"});
   if(request.method!=="GET") return json({error:"Method not allowed"},405);
   return json({error:"Not found"},404);
 }
