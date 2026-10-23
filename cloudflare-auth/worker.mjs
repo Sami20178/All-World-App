@@ -194,6 +194,11 @@ async function createSession(env, userId) {
   return token;
 }
 
+async function revokeCurrentSession(request, env) {
+  const token = cookieValue(request);
+  if (token) await env.AUTH_DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
+}
+
 async function currentSession(request, env) {
   const token = cookieValue(request);
   if (!token) return null;
@@ -312,6 +317,7 @@ async function handle(request, env) {
         if (/UNIQUE constraint failed: users\./i.test(message)) return json(request, env, { error: "Benutzername oder E-Mail-Adresse wird bereits verwendet." }, 409);
         throw error;
       }
+      await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
       return json(request, env, { user: publicUser(user) }, 201, { "Set-Cookie": sessionCookie(token) });
     }
@@ -324,7 +330,9 @@ async function handle(request, env) {
       }
       const identifier = typeof body.username === "string" ? body.username.trim() : "";
       const password = typeof body.password === "string" ? body.password : "";
-      if (!(await consumeRateLimit(request, env, "login", identifier, 20))) {
+      const loginIpAllowed = await consumeRateLimit(request, env, "login-ip", "", 40);
+      const loginIdentityAllowed = await consumeRateLimit(request, env, "login-identifier", identifier, 10);
+      if (!loginIpAllowed || !loginIdentityAllowed) {
         return json(request, env, { error: "Zu viele Anmeldeversuche. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
       }
       if (!identifier || identifier.length > 254 || password.length > 72) {
@@ -336,6 +344,7 @@ async function handle(request, env) {
       ).bind(normalized, normalized).first();
       const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
       if (!user || !passwordOk) return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
+      await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
       return json(request, env, { user: publicUser(user) }, 200, { "Set-Cookie": sessionCookie(token) });
     }
@@ -374,7 +383,9 @@ async function handle(request, env) {
       if (!username || !password || username.length > 32 || password.length > 72) {
         return json(request, env, { error: "Gib Benutzername und Passwort des zu verbindenden Kontos ein." }, 400);
       }
-      if (!(await consumeRateLimit(request, env, "link", username, 10))) {
+      const linkIpAllowed = await consumeRateLimit(request, env, "link-ip", "", 20);
+      const linkIdentityAllowed = await consumeRateLimit(request, env, "link-identity", username, 10);
+      if (!linkIpAllowed || !linkIdentityAllowed) {
         return json(request, env, { error: "Zu viele Versuche. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
       }
       const target = await db.prepare("SELECT id,username,email,password_hash,created_at FROM users WHERE username_normalized=?")
