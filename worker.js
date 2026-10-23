@@ -56,7 +56,7 @@ async function handle(request,env) {
     return json({resource:RESOURCE,authorization_servers:[BASE],scopes_supported:SCOPES,bearer_methods_supported:["header"],resource_documentation:BASE+"/mcp/chatgpt"});
   }
   if(request.method==="GET" && path==="/.well-known/oauth-authorization-server") {
-    return json({issuer:BASE,authorization_endpoint:BASE+"/oauth/authorize",token_endpoint:BASE+"/oauth/token",registration_endpoint:BASE+"/oauth/register,response_types_supported:["code"],response_modes_supported:["query"],grant_types_supported:["authorization_code"],code_challenge_methods_supported:["S256"],token_endpoint_auth_methods_supported:["none"],scopes_supported:SCOPES,client_id_metadata_document_supported:false});
+    return json({issuer:BASE,authorization_endpoint:BASE+"/oauth/authorize",token_endpoint:BASE+"/oauth/token",registration_endpoint:BASE+"/oauth/register",response_types_supported:["code"],response_modes_supported:["query"],grant_types_supported:["authorization_code"],code_challenge_methods_supported:["S256"],token_endpoint_auth_methods_supported:["none"],scopes_supported:SCOPES,client_id_metadata_document_supported:false});
   }
   if(request.method==="POST" && path==="/oauth/register") {
     let body; try{body=await request.json()}catch{return json({error:"invalid_client_metadata"},400)}
