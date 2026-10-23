@@ -11,9 +11,13 @@ This directory contains a separate Cloudflare Workers + D1 implementation for Al
 - Account listing/linking/switching, account data CRUD, logout, and account deletion with password confirmation.
 - A D1 schema that can be applied repeatedly without deleting existing rows.
 
-## Not yet enabled
+## Social sign-in (OAuth 2.0)
 
-Social/OAuth sign-in, email verification, and password reset are not implemented in this Worker yet. The provider endpoint returns an empty list instead of showing unconfigured providers as active. Do not connect the production frontend until the Worker is deployed, its D1 binding and APP_ORIGIN are configured, and the live smoke tests pass.
+The Worker supports a configurable OAuth 2.0 authorization-code flow for providers that expose an HTTPS token endpoint and an HTTPS user-info endpoint. Configure `OAUTH_PROVIDERS_JSON` as a Cloudflare Worker secret; each entry needs `clientId`, `clientSecret`, `authorizeUrl`, `tokenUrl`, and `userInfoUrl`. Optional fields include `label`, `scopes`, `idField`, `nameField`, `userInfoPath`, `emailVerifiedField`, `clientAuthMethod` (`body` or `basic`), `clientIdHeader`, `pkce: true`, and `extraAuthorizeParams`. Use PKCE (S256) whenever the provider supports it. Register the exact callback URL `https://YOUR-API-HOST/api/auth/oauth/PROVIDER/callback` with each provider.
+
+The Worker only lists providers with valid server-side configuration. It does not advertise `apple` or `supercell` through this generic adapter; Apple requires a dedicated, verified ID-token implementation before it can be enabled. OAuth state is single-use, expires after ten minutes, is bound to an HttpOnly/Secure browser cookie, and is checked before exchanging the code. Provider secrets are never returned to the browser or stored in Git. Email is only copied to a new account when the configured profile field explicitly marks it verified; an existing email account is never auto-linked.
+
+Email verification and password reset are still not implemented in this Worker. Do not connect the production frontend until the Worker is deployed, its D1 binding and APP_ORIGIN are configured, provider credentials are added through Cloudflare secret settings, and live HTTPS tests pass.
 
 ## Configuration
 
@@ -25,6 +29,8 @@ The Worker code initializes tables with CREATE TABLE IF NOT EXISTS; schema.sql i
 
 GET /api/health and GET /api/ready
 GET /api/auth/providers
+GET /api/auth/oauth/:provider
+GET /api/auth/oauth/:provider/callback
 POST /api/auth/register
 POST /api/auth/login
 GET /api/auth/me

@@ -15,7 +15,11 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS account_links (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, linked_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL, PRIMARY KEY(user_id, linked_user_id), CHECK(user_id <> linked_user_id))",
   "CREATE TABLE IF NOT EXISTS user_data (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, type TEXT NOT NULL, data_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS user_data_user_idx ON user_data(user_id, updated_at)",
-  "CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS oauth_identities (provider TEXT NOT NULL, provider_user_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, display_name TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(provider, provider_user_id))",
+  "CREATE INDEX IF NOT EXISTS oauth_identities_user_idx ON oauth_identities(user_id)",
+  "CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, provider TEXT NOT NULL, code_verifier TEXT, user_id TEXT, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at)"
 ];
 const schemaPromises = new WeakMap();
 
@@ -60,12 +64,12 @@ function json(request, env, data, status = 200, extra = {}) {
   });
 }
 
-function cookieValue(request) {
+function cookieValue(request, name = COOKIE_NAME) {
   const header = request.headers.get("Cookie") || "";
   for (const part of header.split(";")) {
     const index = part.indexOf("=");
     if (index < 0) continue;
-    if (part.slice(0, index).trim() === COOKIE_NAME) return part.slice(index + 1).trim();
+    if (part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
   }
   return "";
 }
@@ -250,6 +254,338 @@ async function requireSession(request, env) {
   return { session };
 }
 
+
+const OAUTH_RESERVED_PROVIDERS = new Set(["apple", "supercell"]);
+const OAUTH_RESERVED_PARAMS = new Set(["client_id", "client_secret", "redirect_uri", "response_type", "state", "code_challenge", "code_challenge_method", "scope"]);
+
+function secureHttpsUrl(value) {
+  try {
+    const url = new URL(typeof value === "string" ? value : "");
+    if (url.protocol !== "https:" || url.username || url.password || url.hash) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function readOAuthField(value, path) {
+  if (!value || typeof value !== "object" || typeof path !== "string" || !/^[A-Za-z0-9_.-]{1,120}$/.test(path)) return undefined;
+  return path.split(".").reduce((current, part) => current && typeof current === "object" ? current[part] : undefined, value);
+}
+
+function parseOAuthProviders(env) {
+  const raw = typeof env.OAUTH_PROVIDERS_JSON === "string" ? env.OAUTH_PROVIDERS_JSON : "";
+  if (!raw || raw.length > 65536) return {};
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return {}; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const providers = {};
+  for (const [rawSlug, item] of Object.entries(parsed)) {
+    const slug = rawSlug.toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(slug) || OAUTH_RESERVED_PROVIDERS.has(slug)) continue;
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const clientId = typeof item.clientId === "string" ? item.clientId.trim() : "";
+    const clientSecret = typeof item.clientSecret === "string" ? item.clientSecret : "";
+    const authorizeUrl = secureHttpsUrl(item.authorizeUrl);
+    const tokenUrl = secureHttpsUrl(item.tokenUrl);
+    const userInfoUrl = secureHttpsUrl(item.userInfoUrl);
+    if (!clientId || clientId.length > 2048 || !clientSecret || clientSecret.length > 8192 ||
+        !authorizeUrl || !tokenUrl || !userInfoUrl) continue;
+    const scopes = Array.isArray(item.scopes) ? item.scopes.join(" ") : String(item.scopes || "openid profile email");
+    if (scopes.length > 500) continue;
+    const label = typeof item.label === "string" && item.label.trim().length <= 60 ? item.label.trim() : slug;
+    const clientAuthMethod = item.clientAuthMethod === "basic" ? "basic" : "body";
+    const extraAuthorizeParams = {};
+    if (item.extraAuthorizeParams && typeof item.extraAuthorizeParams === "object" && !Array.isArray(item.extraAuthorizeParams)) {
+      for (const [key, value] of Object.entries(item.extraAuthorizeParams).slice(0, 20)) {
+        if (!/^[A-Za-z0-9_.-]{1,64}$/.test(key) || OAUTH_RESERVED_PARAMS.has(key.toLowerCase())) continue;
+        if (!["string", "number", "boolean"].includes(typeof value)) continue;
+        const text = String(value);
+        if (text.length <= 200) extraAuthorizeParams[key] = text;
+      }
+    }
+    providers[slug] = {
+      clientId,
+      clientSecret,
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      label: label || slug,
+      scopes,
+      clientAuthMethod,
+      pkce: item.pkce === true,
+      idField: typeof item.idField === "string" && item.idField.length <= 120 ? item.idField : "id",
+      nameField: typeof item.nameField === "string" && item.nameField.length <= 120 ? item.nameField : "name",
+      userInfoPath: typeof item.userInfoPath === "string" && item.userInfoPath.length <= 120 ? item.userInfoPath : "",
+      emailVerifiedField: typeof item.emailVerifiedField === "string" && item.emailVerifiedField.length <= 120 ? item.emailVerifiedField : "",
+      clientIdHeader: typeof item.clientIdHeader === "string" && /^[A-Za-z0-9-]{1,64}$/.test(item.clientIdHeader) &&
+        !["authorization", "cookie", "host", "content-length", "content-type"].includes(item.clientIdHeader.toLowerCase()) ? item.clientIdHeader : "",
+      extraAuthorizeParams
+    };
+  }
+  return providers;
+}
+
+function apiOrigin(request, env) {
+  const candidate = String(env.API_PUBLIC_URL || new URL(request.url).origin);
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) return "";
+    return url.origin;
+  } catch {
+    return "";
+  }
+}
+
+function oauthStateCookieName(slug) {
+  return "allworld.oauth." + slug;
+}
+
+function oauthStateCookie(slug, state) {
+  return oauthStateCookieName(slug) + "=" + state + "; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=None";
+}
+
+function expiredOAuthStateCookie(slug) {
+  return oauthStateCookieName(slug) + "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None";
+}
+
+function oauthRedirect(env, values = {}, cookies = []) {
+  const origin = getAllowedOrigin(env);
+  if (!origin) {
+    return new Response(JSON.stringify({ error: "APP_ORIGIN ist nicht als sichere HTTPS-Origin konfiguriert." }), {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff" }
+    });
+  }
+  const target = new URL("/", origin);
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value === "string" && value.length <= 200) target.searchParams.set(key, value);
+  }
+  const headers = new Headers({
+    "Location": target.toString(),
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff"
+  });
+  for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+  return new Response(null, { status: 302, headers });
+}
+
+async function handleOAuthStart(request, env, db, slug) {
+  const config = parseOAuthProviders(env)[slug];
+  if (!config) return oauthRedirect(env, { oauth_error: "provider_not_configured" });
+  const origin = apiOrigin(request, env);
+  if (!origin || !getAllowedOrigin(env)) return json(request, env, { error: "OAuth-API oder Frontend-Origin ist nicht sicher konfiguriert." }, 503);
+  if (!(await consumeRateLimit(request, env, "oauth-start", slug, 20))) {
+    return oauthRedirect(env, { oauth_error: "login_failed" });
+  }
+  const current = await currentSession(request, env);
+  const state = randomToken(32);
+  const verifier = config.pkce ? randomToken(48) : "";
+  const now = Date.now();
+  await db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").bind(now).run();
+  await db.prepare("INSERT INTO oauth_states(state_hash,provider,code_verifier,user_id,expires_at,created_at) VALUES(?,?,?,?,?,?)")
+    .bind(await sha256(state), slug, verifier || null, current ? current.user.id : null, now + 10 * 60 * 1000, now).run();
+
+  const callbackUrl = origin + "/api/auth/oauth/" + slug + "/callback";
+  const authorize = new URL(config.authorizeUrl);
+  for (const [key, value] of Object.entries(config.extraAuthorizeParams)) authorize.searchParams.set(key, value);
+  authorize.searchParams.set("response_type", "code");
+  authorize.searchParams.set("client_id", config.clientId);
+  authorize.searchParams.set("redirect_uri", callbackUrl);
+  authorize.searchParams.set("scope", config.scopes);
+  authorize.searchParams.set("state", state);
+  if (verifier) {
+    const challengeBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+    authorize.searchParams.set("code_challenge", b64url(challengeBytes));
+    authorize.searchParams.set("code_challenge_method", "S256");
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Location": authorize.toString(),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "Set-Cookie": oauthStateCookie(slug, state),
+      "X-Content-Type-Options": "nosniff"
+    }
+  });
+}
+
+async function handleOAuthCallback(request, env, db, slug) {
+  const config = parseOAuthProviders(env)[slug];
+  const clearStateCookie = expiredOAuthStateCookie(slug);
+  if (!config || !getAllowedOrigin(env)) {
+    return oauthRedirect(env, { oauth_error: "provider_not_configured" }, [clearStateCookie]);
+  }
+  const publicApiOrigin = apiOrigin(request, env);
+  if (!publicApiOrigin) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+  const url = new URL(request.url);
+  const state = url.searchParams.get("state") || "";
+  const cookieState = cookieValue(request, oauthStateCookieName(slug));
+  if (!state || state.length > 256 || !cookieState ||
+      !constantTimeEqual(new TextEncoder().encode(state), new TextEncoder().encode(cookieState))) {
+    return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  }
+
+  const stateHash = await sha256(state);
+  const flow = await db.prepare("SELECT state_hash,provider,code_verifier,user_id,expires_at FROM oauth_states WHERE state_hash=? AND provider=? AND expires_at>?")
+    .bind(stateHash, slug, Date.now()).first();
+  if (!flow) return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  const consumed = await db.prepare("DELETE FROM oauth_states WHERE state_hash=? AND provider=? AND expires_at>?")
+    .bind(stateHash, slug, Date.now()).run();
+  if (!consumed.meta || consumed.meta.changes !== 1) {
+    return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  }
+
+  if (url.searchParams.has("error") || !url.searchParams.get("code") || url.searchParams.get("code").length > 4096) {
+    return oauthRedirect(env, { oauth_error: "provider_denied" }, [clearStateCookie]);
+  }
+  if (!(await consumeRateLimit(request, env, "oauth-callback", slug, 30))) {
+    return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+  }
+
+  if (flow.user_id) {
+    const current = await currentSession(request, env);
+    if (!current || current.user.id !== flow.user_id) {
+      return oauthRedirect(env, { oauth_error: "account_missing" }, [clearStateCookie]);
+    }
+  }
+
+  try {
+    const callbackUrl = publicApiOrigin + "/api/auth/oauth/" + slug + "/callback";
+    const tokenBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: url.searchParams.get("code"),
+      redirect_uri: callbackUrl
+    });
+    const tokenHeaders = new Headers({ "Accept": "application/json" });
+    if (config.clientAuthMethod === "basic") {
+      tokenHeaders.set("Authorization", "Basic " + btoa(config.clientId + ":" + config.clientSecret));
+    } else {
+      tokenBody.set("client_id", config.clientId);
+      tokenBody.set("client_secret", config.clientSecret);
+    }
+    if (flow.code_verifier) tokenBody.set("code_verifier", flow.code_verifier);
+    tokenHeaders.set("Content-Type", "application/x-www-form-urlencoded");
+    const tokenResponse = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers: tokenHeaders,
+      body: tokenBody.toString(),
+      redirect: "error",
+      signal: AbortSignal.timeout(10000)
+    });
+    const tokenData = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || typeof tokenData.access_token !== "string" || !tokenData.access_token) {
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+    }
+
+    const userInfoHeaders = new Headers({
+      "Authorization": "Bearer " + tokenData.access_token,
+      "Accept": "application/json"
+    });
+    if (config.clientIdHeader) userInfoHeaders.set(config.clientIdHeader, config.clientId);
+    const userInfoResponse = await fetch(config.userInfoUrl, {
+      method: "GET",
+      headers: userInfoHeaders,
+      redirect: "error",
+      signal: AbortSignal.timeout(10000)
+    });
+    const userInfo = await userInfoResponse.json().catch(() => ({}));
+    if (!userInfoResponse.ok || !userInfo || typeof userInfo !== "object" || Array.isArray(userInfo)) {
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+    }
+    const profile = config.userInfoPath ? readOAuthField(userInfo, config.userInfoPath) : userInfo;
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+    }
+    const providerUserId = readOAuthField(profile, config.idField) ?? readOAuthField(profile, "id") ?? readOAuthField(profile, "sub");
+    if (providerUserId === undefined || providerUserId === null || !String(providerUserId) || String(providerUserId).length > 255) {
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+    }
+    const providerUserIdText = String(providerUserId);
+    const rawDisplayName = readOAuthField(profile, config.nameField) ?? readOAuthField(profile, "username") ?? slug;
+    const displayName = String(rawDisplayName).replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 120) || slug;
+
+    if (flow.user_id) {
+      const identity = await db.prepare("SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?")
+        .bind(slug, providerUserIdText).first();
+      if (identity && identity.user_id !== flow.user_id) {
+        return oauthRedirect(env, { oauth_error: "identity_already_linked" }, [clearStateCookie]);
+      }
+      if (!identity) {
+        await db.prepare("INSERT INTO oauth_identities(provider,provider_user_id,user_id,display_name,created_at) VALUES(?,?,?,?,?)")
+          .bind(slug, providerUserIdText, flow.user_id, displayName, new Date().toISOString()).run();
+      }
+      return oauthRedirect(env, { oauth: "linked", provider: slug }, [clearStateCookie]);
+    }
+
+    let identity = await db.prepare("SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?")
+      .bind(slug, providerUserIdText).first();
+    let userId = identity ? identity.user_id : "";
+    if (userId) {
+      const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
+      if (!exists) {
+        await db.prepare("DELETE FROM oauth_identities WHERE provider=? AND provider_user_id=?").bind(slug, providerUserIdText).run();
+        userId = "";
+      }
+    }
+
+    if (!userId) {
+      const base = (slug + "_" + displayName).normalize("NFKD").toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 22) || slug;
+      let username = "";
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const suffix = randomToken(5).replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 8);
+        const candidate = (base + "_" + suffix).slice(0, 32);
+        const taken = await db.prepare("SELECT 1 AS ok FROM users WHERE username_normalized=?").bind(candidate.toLowerCase()).first();
+        if (!taken) { username = candidate; break; }
+      }
+      if (!username) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+
+      let email = "";
+      const candidateEmail = readOAuthField(profile, "email");
+      const verifiedValue = config.emailVerifiedField ? readOAuthField(profile, config.emailVerifiedField) : false;
+      const emailVerified = verifiedValue === true || verifiedValue === "true";
+      if (emailVerified && typeof candidateEmail === "string" && candidateEmail.length <= 254 && EMAIL_PATTERN.test(candidateEmail)) {
+        const normalizedEmail = candidateEmail.trim().toLowerCase();
+        const takenEmail = await db.prepare("SELECT id FROM users WHERE email_normalized=?").bind(normalizedEmail).first();
+        if (!takenEmail) email = candidateEmail.trim();
+      }
+      const user = {
+        id: crypto.randomUUID(),
+        username,
+        username_normalized: username.toLowerCase(),
+        email: email || null,
+        email_normalized: email ? email.toLowerCase() : null,
+        password_hash: await hashPassword(randomToken(48)),
+        created_at: new Date().toISOString()
+      };
+      await db.prepare("INSERT INTO users(id,username,username_normalized,email,email_normalized,password_hash,created_at) VALUES(?,?,?,?,?,?,?)")
+        .bind(user.id, user.username, user.username_normalized, user.email, user.email_normalized, user.password_hash, user.created_at).run();
+      try {
+        await db.prepare("INSERT INTO oauth_identities(provider,provider_user_id,user_id,display_name,created_at) VALUES(?,?,?,?,?)")
+          .bind(slug, providerUserIdText, user.id, displayName, user.created_at).run();
+        userId = user.id;
+      } catch (error) {
+        await db.prepare("DELETE FROM users WHERE id=?").bind(user.id).run();
+        identity = await db.prepare("SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?")
+          .bind(slug, providerUserIdText).first();
+        if (!identity) throw error;
+        userId = identity.user_id;
+      }
+    }
+
+    const linkedUser = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
+    if (!linkedUser) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+    await revokeCurrentSession(request, env);
+    const token = await createSession(env, userId);
+    return oauthRedirect(env, { oauth: "success", provider: slug }, [clearStateCookie, sessionCookie(token)]);
+  } catch {
+    return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+  }
+}
+
 async function handle(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -288,11 +624,21 @@ async function handle(request, env) {
     const db = env.AUTH_DB;
 
     if (request.method === "GET" && path === "/api/auth/providers") {
-      return json(request, env, { providers: [], oauthAvailable: false });
+      const providers = parseOAuthProviders(env);
+      return json(request, env, {
+        providers: Object.entries(providers).map(([id, config]) => ({ id, label: config.label, enabled: true })),
+        oauthAvailable: Object.keys(providers).length > 0
+      });
     }
 
     if (path.startsWith("/api/auth/oauth/")) {
-      return json(request, env, { error: "OAuth-Anmeldung ist für diesen API-Endpunkt noch nicht aktiviert." }, 503);
+      const match = path.match(/^\/api\/auth\/oauth\/([a-z0-9][a-z0-9_-]{0,31})(\/callback)?$/i);
+      if (!match) return json(request, env, { error: "OAuth-Endpunkt nicht gefunden." }, 404);
+      if (request.method !== "GET") return json(request, env, { error: "OAuth-Callback muss als GET aufgerufen werden." }, 405);
+      const slug = match[1].toLowerCase();
+      return match[2]
+        ? await handleOAuthCallback(request, env, db, slug)
+        : await handleOAuthStart(request, env, db, slug);
     }
 
     if (request.method === "POST" && path === "/api/auth/register") {
@@ -516,6 +862,7 @@ async function handle(request, env) {
       const userId = required.session.user.id;
       await db.prepare("DELETE FROM user_data WHERE user_id=?").bind(userId).run();
       await db.prepare("DELETE FROM account_links WHERE user_id=? OR linked_user_id=?").bind(userId, userId).run();
+      await db.prepare("DELETE FROM oauth_identities WHERE user_id=?").bind(userId).run();
       await db.prepare("DELETE FROM sessions WHERE user_id=?").bind(userId).run();
       await db.prepare("DELETE FROM users WHERE id=?").bind(userId).run();
       return json(request, env, { ok: true, deleted: true }, 200, { "Set-Cookie": expiredCookie() });
