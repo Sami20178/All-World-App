@@ -34,7 +34,7 @@ jobs:
           if (health.ok !== true || health.service !== "All World API" || health.status !== "healthy" || !health.endpoints.includes("/mcp/chatgpt")) throw new Error("Public health response is incorrect");
           console.log("PASS public health");
           const site = await getJson("/api/plugin/site-info");
-          if (site.name !== "All World" || site.mcp_endpoint !== base + "/mcp" || site.mcp_connect_page !== base + "/mcp/chatgpt") throw new Error("Site metadata is incorrect");
+          if (site.name !== "All World" || site.mcp_endpoint !== base + "/mcp" || site.mcp_connect_page !== base + "/mcp") throw new Error("Site metadata is incorrect");
           console.log("PASS public site metadata");
           const authMeta = await getJson("/.well-known/oauth-authorization-server");
           for (const key of ["authorization_endpoint", "token_endpoint", "registration_endpoint"]) if (!authMeta[key]?.startsWith(base + "/")) throw new Error("OAuth metadata missing " + key);
@@ -42,10 +42,14 @@ jobs:
           const resourceMeta = await getJson("/.well-known/oauth-protected-resource");
           if (resourceMeta.resource !== base + "/mcp" || !resourceMeta.authorization_servers.includes(base)) throw new Error("Protected-resource metadata is incorrect");
           console.log("PASS OAuth discovery metadata");
-          const page = await fetch(base + "/mcp/chatgpt", { signal: AbortSignal.timeout(15000) });
-          const pageText = await page.text();
-          if (!page.ok || !pageText.includes("Mit ChatGPT verbinden") || !pageText.includes(base + "/mcp")) throw new Error("ChatGPT connection page failed");
-          console.log("PASS /mcp/chatgpt connection page");
+          const marketplace = await fetch(base + "/mcp", { redirect:"follow", signal: AbortSignal.timeout(15000) });
+          const marketplaceText = await marketplace.text();
+          if (!marketplace.ok || !marketplaceText.includes("All World MCP Marketplace")) throw new Error("MCP marketplace page failed");
+          console.log("PASS /mcp marketplace");
+          const directPlugin = await fetch(base + "/mcp/chatgpt", { signal: AbortSignal.timeout(15000) });
+          const directText = await directPlugin.text();
+          if (directPlugin.status !== 404 || !directText.includes("open_plugin_settings")) throw new Error("Plugin settings page should require a one-time launch token");
+          console.log("PASS plugin settings URL is gated");
           const unauth = await fetch(base + "/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc:"2.0",id:1,method:"initialize",params:{} }), signal: AbortSignal.timeout(15000) });
           if (unauth.status !== 401 || !unauth.headers.get("www-authenticate")?.includes("oauth-protected-resource")) throw new Error("MCP endpoint must reject requests without a bearer token");
           console.log("PASS MCP rejects unauthenticated requests");
@@ -86,7 +90,7 @@ jobs:
           console.log("PASS authenticated MCP initialize");
           const listed = await mcp("tools/list",{},11);
           const names = (listed.tools||[]).map(t=>t.name);
-          for (const name of ["get_api_health","get_site_info"]) if (!names.includes(name)) throw new Error("Missing MCP tool: "+name);
+          for (const name of ["get_api_health","get_site_info","open_plugin_settings"]) if (!names.includes(name)) throw new Error("Missing MCP tool: "+name);
           console.log("PASS authenticated MCP tools/list");
           const call = await mcp("tools/call",{name:"get_api_health",arguments:{}},12);
           const data = JSON.parse(call.content?.find(x=>x.type==="text")?.text||"{}");
@@ -96,5 +100,14 @@ jobs:
           const siteData = JSON.parse(siteCall.content?.find(x=>x.type==="text")?.text||"{}");
           if (siteData.name !== "All World" || siteData.website !== "https://all-world-app-source-code.docc-samisoliman.workers.dev/") throw new Error("get_site_info returned invalid data");
           console.log("PASS authenticated get_site_info");
+          const launchCall = await mcp("tools/call",{name:"open_plugin_settings",arguments:{}},14);
+          const launchData = JSON.parse(launchCall.content?.find(x=>x.type==="text")?.text||"{}");
+          if (!launchData.one_time || !launchData.url?.startsWith(base+"/mcp/chatgpt?launch=")) throw new Error("Plugin launch link was not generated");
+          const privatePage = await fetch(launchData.url,{redirect:"manual",signal:AbortSignal.timeout(15000)});
+          const privateText = await privatePage.text();
+          if (!privatePage.ok || !privateText.includes("Plugin-Berechtigungen") || privatePage.headers.get("x-robots-tag")?.includes("noindex")!==true) throw new Error("Private plugin settings page did not load securely");
+          const reusedPage = await fetch(launchData.url,{redirect:"manual",signal:AbortSignal.timeout(15000)});
+          if (reusedPage.status !== 410) throw new Error("Plugin launch link should only work once");
+          console.log("PASS one-time private plugin settings launch");
           console.log("All World OAuth 2.1 PKCE and MCP end-to-end tests passed.");
           NODE
