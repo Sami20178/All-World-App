@@ -40,3 +40,9 @@
 5. Keine Version freigeben, bevor Android-APK, Signatur/Integrität, Geräte-Kernfunktionen und alle erforderlichen Pflichtprüfungen belegt sind.
 
 Das Projekt bleibt offen; dieser Bericht behauptet keine Hintergrundarbeit und keine nicht bestätigten Live-Tests.
+
+## Nachtrag 2026-10-24 18:53 UTC
+
+- Frontend-Commit `ef3ef7e6d654e0051857f2c8a57d9e4b8d749a38` nimmt `wrangler.jsonc` in die Deployment-Workflow-Pfadfilter auf. Frontend-Validierung [#40122749243](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40122749243) war erfolgreich.
+- Main-Deploy [#40122749074](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40122749074) scheiterte korrekt, weil `CLOUDFLARE_API_TOKEN` nicht konfiguriert ist. Der Workflow bestätigt, dass kein Produktions-Deployment versucht wurde. Der erfolgreiche Cloudflare-Preview-Build ist kein Produktions-Deployment.
+- Konto-API-Live-Tests, externe Provider-Konfiguration und Team-Repository-Synchronisierung bleiben offen. Kein Release oder Tag erstellt.
