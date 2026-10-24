@@ -49,3 +49,10 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Die Android-APK ist ein Frontend-Artefakt und kein Server-Binary: [Actions #40005689088](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40005689088), Artefakt-ID `12524470874`, Debug-APK, 22.048 Byte, Ablaufdatum 2026-11-22. Geräteinstallation/Kernfunktionstest sind nicht belegt.
 - Die Konto-API ist deployed, aber externer HTTPS-Register/Login/Logout-Test ist offen; `OAUTH_PROVIDERS_JSON` ist nicht gesetzt. Kein Server-Release erstellt.
 - Statusbericht: [PROJECT-PROGRESS-2026-10-24.md](PROJECT-PROGRESS-2026-10-24.md).
+
+## APK-Nachtrag 2026-10-24 19:10 UTC
+
+- Neuester belegter Android-Build: [Actions #40009492461](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40009492461), Commit be59ed399d692c297eaad182908cfc164f97389e.
+- Artefakt First-Classic-0.0.0.0-Android-APK-debug, ID 12524789366, 22.070 Byte; Ablauf 2026-11-22 19:13 UTC. Build, Nicht-Leere, Signatur-/Integritätsprüfung und gebündelte Web-Assets erfolgreich.
+- Keine echte Geräteinstallation oder Kernfunktionstests belegt. Das temporäre Debug-Artefakt ist kein Release-Asset. Die nächste freie gemeinsame Version bleibt First Classic 0.0.0.0; kein Release erstellt.
+
