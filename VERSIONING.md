@@ -40,3 +40,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Der neue Frontend-Deployment-Workflow konnte wegen des fehlenden GitHub-Secrets `CLOUDFLARE_API_TOKEN` nicht deployen. Der Server-Release bleibt ebenfalls unveröffentlicht.
 
 - Live-Nachweis am 2026-10-23: [MCP OAuth-/End-to-End-Smoke-Test #40012531417](https://github.com/Sami20178/All-World-App/actions/runs/40012531417) bestand über HTTPS auf dem Worker `all-world-app` (Health, OAuth-Discovery, PKCE, Tokenaustausch und authentifizierte MCP-Werkzeuge). Dieser Test gilt für MCP-/ChatGPT-OAuth, nicht für die separate Konto-API `all-world-auth-api` oder externe Social-Login-Provider. Für diese Konto-API fehlt weiterhin ein bestätigter Live-Register/Login/Logout-Test; `OAUTH_PROVIDERS_JSON` ist nicht konfiguriert.
+
+
+## Prüfprotokoll 2026-10-24
+
+- GitHub-API-Prüfung: In diesem Server-Repository und im Frontend-Repository [`Sami20178/All-World-App-Source-Code-`](https://github.com/Sami20178/All-World-App-Source-Code-) sind die Release-Listen leer; die Git-Tag-Referenzabfragen liefern ebenfalls keine Tags. Es wurde kein Release und kein Tag erstellt.
+- Nächste gemeinsame unveröffentlichte App-Version bleibt **First Classic 0.0.0.0**. Keine Version wurde übersprungen oder doppelt vergeben.
+- Die Android-APK ist ein Frontend-Artefakt und kein Server-Binary: [Actions #40005689088](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40005689088), Artefakt-ID `12524470874`, Debug-APK, 22.048 Byte, Ablaufdatum 2026-11-22. Geräteinstallation/Kernfunktionstest sind nicht belegt.
+- Die Konto-API ist deployed, aber externer HTTPS-Register/Login/Logout-Test ist offen; `OAUTH_PROVIDERS_JSON` ist nicht gesetzt. Kein Server-Release erstellt.
+- Statusbericht: [PROJECT-PROGRESS-2026-10-24.md](PROJECT-PROGRESS-2026-10-24.md).
