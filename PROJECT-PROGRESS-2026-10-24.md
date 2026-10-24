@@ -1,6 +1,6 @@
 # All World – Backend-Fortschritt 2026-10-24
 
-**Stand:** 2026-10-24, 20:33 Europe/Berlin  
+**Aktualisiert:** 2026-10-24, 18:49 UTC (20:49 Europe/Berlin)  
 **Quelle:** `Sami20178/All-World-App`; Team-Ziel: `World-Team/All-World-App-Team-Place`.
 
 ## Repository und CI
@@ -30,7 +30,7 @@
 ## Version und Artefakte
 - Die Android-APK gehört zum Frontend-Repository: [Actions-Lauf #40005689088](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40005689088), Artefakt `First-Classic-0.0.0.0-Android-APK-debug`, ID `12524470874`, 22.048 Byte, Ablaufdatum 2026-11-22. Debug-Artefakt, kein Release-Asset; keine echte Geräteinstallation nachgewiesen.
 - Kein Server-Release erstellt. Ein Server-Release darf keine APK als Server-Binary ausgeben; gemeinsame Releases bleiben bis zum bestandenen App-Release-Gate offen.
-- Der Frontend-Deployment-Workflow meldete beim Lauf [#40012338768](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40012338768) zwar `success`, aber Deployment und Live-Prüfung waren übersprungen, weil das GitHub-Secret `CLOUDFLARE_API_TOKEN` fehlte. Frontend-PR [#13](https://github.com/Sami20178/All-World-App-Source-Code-/pull/13) korrigiert diese Statussemantik; noch nicht gemergt.
+- Der alte Frontend-Deploy-Lauf [#40012338768](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40012338768) war irreführend grün, obwohl Deploy und Live-Prüfung wegen des fehlenden Secrets übersprungen wurden. Frontend-PR [#13](https://github.com/Sami20178/All-World-App-Source-Code-/pull/13) wurde inzwischen mit Merge-Commit `8f667a233612eabcd0570b2e3c3daeae12d949fb` gemergt. Frontend-Validierung nach Merge [#40122422355](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40122422355) ist erfolgreich; Main-Deploy [#40122422390](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40122422390) schlägt nun korrekt bei der fehlenden `CLOUDFLARE_API_TOKEN`-Secret-Konfiguration fehl. Der separate Cloudflare-Preview-Build `84893ca5-cd85-4970-b23d-b1c838e2a028` war erfolgreich; Produktions-Deployment ist nicht erfolgt.
 
 ## Nächste Aufgaben
 1. Konto-API von einem erlaubten externen HTTPS-Client testen.
