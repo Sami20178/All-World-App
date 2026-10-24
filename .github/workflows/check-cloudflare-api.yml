@@ -1,4 +1,4 @@
-name: All World Cloudflare API and MCP OAuth smoke test
+name: All World Cloudflare APIs, account-auth health, and MCP OAuth smoke test
 
 on:
   push:
@@ -110,4 +110,44 @@ jobs:
           if (reusedPage.status !== 410) throw new Error("Plugin launch link should only work once");
           console.log("PASS one-time private plugin settings launch");
           console.log("All World OAuth 2.1 PKCE and MCP end-to-end tests passed.");
+          NODE
+
+      - name: Test deployed account-auth Worker health and provider discovery
+        env:
+          AUTH_API_BASE_URL: https://all-world-auth-api.docc-samisoliman.workers.dev
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.AUTH_API_BASE_URL;
+          async function getJson(path) {
+            const response = await fetch(base + path, {
+              headers: { accept: "application/json" },
+              signal: AbortSignal.timeout(15000)
+            });
+            const text = await response.text();
+            if (!response.ok) throw new Error(base + path + " returned HTTP " + response.status + ": " + text.slice(0, 300));
+            try { return JSON.parse(text); }
+            catch { throw new Error(path + " did not return JSON"); }
+          }
+          const health = await getJson("/api/health");
+          if (health.ok !== true || health.ready !== true || health.service !== "all-world-auth-api") {
+            throw new Error("Account-auth health response is incorrect: " + JSON.stringify(health));
+          }
+          console.log("PASS account-auth /api/health");
+          const ready = await getJson("/api/ready");
+          if (ready.ok !== true || ready.ready !== true || ready.service !== "all-world-auth-api") {
+            throw new Error("Account-auth readiness response is incorrect: " + JSON.stringify(ready));
+          }
+          console.log("PASS account-auth /api/ready");
+          const discovery = await getJson("/api/auth/providers");
+          if (!Array.isArray(discovery.providers) || typeof discovery.oauthAvailable !== "boolean") {
+            throw new Error("Account-auth provider discovery has an invalid response");
+          }
+          if (discovery.providers.some(provider => !provider || typeof provider.id !== "string" || provider.enabled !== true)) {
+            throw new Error("Provider discovery returned an invalid or disabled public provider");
+          }
+          if (discovery.providers.some(provider => ["supercell", "apple"].includes(provider.id.toLowerCase()))) {
+            throw new Error("Unsupported provider appeared in public generic OAuth discovery");
+          }
+          console.log("PASS account-auth provider discovery; configured providers: " + discovery.providers.length);
+          console.log("Account-auth live smoke test passed (read-only; no accounts created or changed).");
           NODE
