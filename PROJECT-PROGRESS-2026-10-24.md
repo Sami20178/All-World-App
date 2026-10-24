@@ -60,3 +60,9 @@ Das Projekt bleibt offen; dieser Bericht behauptet keine Hintergrundarbeit und k
 - Releases und Tags: Die Release-Listen beider Haupt-Repositories sind leer; die Git-Tag-Referenzabfragen ergaben ebenfalls keine Tags. Die nächste gemeinsame unveröffentlichte Version bleibt First Classic 0.0.0.0. Kein Release wurde erstellt.
 - Kein neuer Android-Build für diesen Commit ist bestätigt: der Workflow-Endpunkt android-build.yml/runs war über den verfügbaren GitHub-Fetch-Connector nicht abrufbar. Das zuletzt dokumentierte Android-Artefakt bleibt eine Debug-APK ohne nachgewiesene Geräteinstallation. Daher weiterhin kein Release.
 
+## Korrektur APK-Nachweis 2026-10-24 19:10 UTC
+
+- Die erneute Prüfung der letzten 100 Actions-Läufe ergab einen neueren APK-Build als den zuvor im Bericht zitierten Lauf: [Android APK build #40009492461](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40009492461), Commit be59ed399d692c297eaad182908cfc164f97389e.
+- Artefakt: First-Classic-0.0.0.0-Android-APK-debug, ID 12524789366, 22.070 Byte; Ablauf am 2026-11-22 um 19:13 UTC. Build, Nicht-Leere, Signatur-/Integritätsprüfung und gebündelte Web-Assets wurden im Workflow erfolgreich geprüft.
+- Diese APK ist weiterhin ein temporäres Debug-Artefakt, kein Release-Asset. Sie wurde nicht auf einem echten Android-/Fire-Gerät installiert; Kernfunktionen sind auf echter Hardware nicht abgenommen. Sie wurde außerdem vor dem neuesten Frontend-Commit e8465528 gebaut und enthält dessen neue API-Konfiguration nicht nachweislich.
+
