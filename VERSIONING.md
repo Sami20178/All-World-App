@@ -56,3 +56,11 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Artefakt First-Classic-0.0.0.0-Android-APK-debug, ID 12524789366, 22.070 Byte; Ablauf 2026-11-22 19:13 UTC. Build, Nicht-Leere, Signatur-/Integritätsprüfung und gebündelte Web-Assets erfolgreich.
 - Keine echte Geräteinstallation oder Kernfunktionstests belegt. Das temporäre Debug-Artefakt ist kein Release-Asset. Die nächste freie gemeinsame Version bleibt First Classic 0.0.0.0; kein Release erstellt.
 
+
+
+## Audit-Nachtrag 2026-10-25 — gemeinsamer Versionsstand
+
+- Neuester Android-Build liegt im Frontend-Repository: [Actions #40214453328](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40214453328), Artefakt-ID `12606788167`, `First-Classic-0.0.0.0-Android-APK-debug`, 22.074 Byte; Ablauf 2026-11-24 17:02:35 UTC.
+- Build, Nicht-Leere-, Signatur-/Integritäts- und Web-Asset-Prüfungen bestanden; echte Geräteinstallation/Kernfunktionstests sind nicht belegt. Das Artefakt gehört zur App, nicht zum Node.js-Server.
+- Der Frontend-Deploy [#40214672480](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40214672480) hat den Deployment-Schritt übersprungen, weil `CLOUDFLARE_API_TOKEN` laut Workflow-Log nicht konfiguriert ist. Die neue API-Konfiguration ist nicht als live veröffentlicht bestätigt.
+- Beide Haupt-Repositories haben keine Tags oder Releases. Nächste gemeinsame Version bleibt **First Classic 0.0.0.0**. Kein Release erstellt.
