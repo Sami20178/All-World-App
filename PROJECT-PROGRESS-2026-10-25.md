@@ -7,7 +7,7 @@
 ## GitHub und CI
 
 - Aktueller Backend-`main`-Commit: [`a2344ea198110d96fc9750765acd965587e0af17`](https://github.com/Sami20178/All-World-App/commit/a2344ea198110d96fc9750765acd965587e0af17), dokumentiert den neuesten APK-Artefaktstatus im gemeinsamen Versionsregister.
-- Der geplante Workflow [Actions #40210913825](https://github.com/Sami20178/All-World-App/actions/runs/40210913825) ist **completed / success**. Er prüft den öffentlichen MCP-/OAuth-Endpunkt und führt einen schreibgeschützten Health-/Readiness-/Provider-Discovery-Test für die Konto-API aus. Er erstellt keine Nutzerkonten und belegt nicht die vollständige Registrierung/Login/Logout-Kette.
+- Neuester Workflow [Actions #40225776819](https://github.com/Sami20178/All-World-App/actions/runs/40225776819) ist **completed / success**. Die bei diesem Audit ausgelösten [API-CI-Prüfungen #40225776815](https://github.com/Sami20178/All-World-App/actions/runs/40225776815) und [Node-Server-Validierung #40225776775](https://github.com/Sami20178/All-World-App/actions/runs/40225776775) sind ebenfalls **completed / success**. Der geplante Workflow prüft öffentliche MCP-/OAuth-Endpunkte und führt einen schreibgeschützten Health-/Readiness-/Provider-Discovery-Test der Konto-API aus. Er erstellt keine Nutzerkonten und belegt nicht die vollständige Registrierung/Login/Logout-Kette.
 - Releases und Tag-Referenzen im Server-Repository sind leer. Die nächste gemeinsame App-Version bleibt **First Classic 0.0.0.0**; es wurde kein Server-Release angelegt.
 
 ## Laufzeit und Authentifizierung
@@ -21,7 +21,7 @@
 
 ## Version und APK
 
-- Die letzte dokumentierte APK ist das Frontend-Artefakt [Actions #40009492461](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40009492461), ID `12524789366`, 22.070 Byte, Debug-APK.
+- Die neueste dokumentierte APK ist das Frontend-Artefakt [Actions #40214453328](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40214453328), Commit `3a3600ce149c773a00f1085e133b94e2ca3b8643`, ID `12606788167`, 22.074 Byte, Debug-APK; Ablauf 2026-11-24 17:02:35 UTC.
 - Die CI-Prüfungen für Build, Nicht-Leere, Signatur/Integrität und Web-Assets bestanden. Echter Gerätetest und dauerhafter Release-Asset-Nachweis fehlen.
 - Die APK gehört zum Frontend-Release, nicht zum Server-Binary. **Kein Release wurde erstellt.**
 
