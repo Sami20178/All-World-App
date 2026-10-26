@@ -6,7 +6,7 @@
 
 ## Geprüfter Stand
 
-- Backend main: a2c5cf1ca5e418a2343d23505b66f0738047ec26 (25.10.2026 19:26:35 UTC).
+- Backend-Code-Stand zu Beginn dieses Audits: a2c5cf1ca5e418a2343d23505b66f0738047ec26 (25.10.2026 19:26:35 UTC). Danach wurden VERSIONING.md (Commit b60dde180bc4bb459144c79bbc043b0d49ce9042) und dieser Fortschrittsbericht (initialer Commit ab2aaf929cec2ceb39ecd1ac6a123e4d43f61584) aktualisiert; die zugehörigen Node-, API-CI- und Live-Smoke-Workflows waren erfolgreich.
 - [Node-Server-Validierung #40226053704](https://github.com/Sami20178/All-World-App/actions/runs/40226053704): completed / success.
 - [Live-Smoke-Test #40326895287](https://github.com/Sami20178/All-World-App/actions/runs/40326895287) am 26.10.2026 13:00 UTC: erfolgreich. Die MCP-/OAuth-2.1-PKCE-Tests bestanden, darunter OAuth-Discovery, dynamische Clientregistrierung, Authorization Code mit State, PKCE-Token-Austausch und authentifizierte MCP-Tools.
 - Derselbe Lauf hat den separaten Cloudflare-Account-Auth-Worker über HTTPS geprüft: /api/health und /api/ready erfolgreich, /api/auth/providers gültig. Es waren 0 Provider konfiguriert. Diese Auth-Worker-Prüfung war read-only; keine Konten wurden erstellt oder geändert.
