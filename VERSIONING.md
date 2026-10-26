@@ -64,3 +64,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Build, Nicht-Leere-, Signatur-/Integritäts- und Web-Asset-Prüfungen bestanden; echte Geräteinstallation/Kernfunktionstests sind nicht belegt. Das Artefakt gehört zur App, nicht zum Node.js-Server.
 - Der Frontend-Deploy [#40214672480](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40214672480) hat den Deployment-Schritt übersprungen, weil `CLOUDFLARE_API_TOKEN` laut Workflow-Log nicht konfiguriert ist. Die neue API-Konfiguration ist nicht als live veröffentlicht bestätigt.
 - Beide Haupt-Repositories haben keine Tags oder Releases. Nächste gemeinsame Version bleibt **First Classic 0.0.0.0**. Kein Release erstellt.
+
+
+## Release-Gate-Nachprüfung 2026-10-26
+
+- Die Release-Liste dieses Server-Repositories ist leer; das zugehörige Frontend-Repository hat ebenfalls keine veröffentlichten Releases. Die letzte dokumentierte Prüfung fand keine Tags; die Tag-Referenzabfrage in diesem Durchlauf gab über die GitHub-Integration 404.
+- Die nächste gemeinsame Versionsbezeichnung bleibt First Classic 0.0.0.0. Es wurde kein Release und kein Tag erstellt.
+- Backend-Node-Validierung [#40226053704](https://github.com/Sami20178/All-World-App/actions/runs/40226053704) war erfolgreich. Der Live-Smoke-Test [#40326895287](https://github.com/Sami20178/All-World-App/actions/runs/40326895287) war am 26.10.2026 um 13:00 UTC erfolgreich für den öffentlichen MCP-/OAuth-2.1-PKCE-Dienst und die Account-Auth-Endpunkte /api/health, /api/ready und /api/auth/providers.
+- Der Live-Auth-Smoke-Test ist read-only; er bestätigt weder Registrierung/Login noch eine konfigurierte OAuth-Provider-Anmeldung. Provider-Erkennung meldete 0 konfigurierte Provider.
+- Die Android-Debug-APK gehört zum Frontend-Repository und ist ein temporäres Actions-Artefakt, kein Release-Asset. Echte Geräteinstallation/Kernfunktionstests und die aktuelle Live-Frontend-Verifikation sind weiterhin offen. Daher kein Release erstellen.
