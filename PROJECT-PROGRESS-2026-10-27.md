@@ -7,7 +7,7 @@
 - Server-Team-Repository: [World-Team/All-World-App-Team-Place](https://github.com/World-Team/All-World-App-Team-Place)
 - Source-Team-Repository: [World-Team/All-World-App-Source-Code-Team-repo](https://github.com/World-Team/All-World-App-Source-Code-Team-repo)
 
-Neuester beobachteter Frontend-Commit nach den unten beschriebenen Android-Korrekturen: [a15218297bf01d171f398d4e7e99ce80393a671c](https://github.com/Sami20178/All-World-App-Source-Code-/commit/a15218297bf01d171f398d4e7e99ce80393a671c). Neuester beobachteter Server-Commit: [597a43a5ac670697f4e97e7da8b92ff8920f452b](https://github.com/Sami20178/All-World-App/commit/597a43a5ac670697f4e97e7da8b92ff8920f452b).
+Frontend-Commit nach den unten beschriebenen Android-Korrekturen: [a15218297bf01d171f398d4e7e99ce80393a671c](https://github.com/Sami20178/All-World-App-Source-Code-/commit/a15218297bf01d171f398d4e7e99ce80393a671c). Letzter Server-Code-Commit vor diesem Fortschrittsbericht: [597a43a5ac670697f4e97e7da8b92ff8920f452b](https://github.com/Sami20178/All-World-App/commit/597a43a5ac670697f4e97e7da8b92ff8920f452b).
 
 ## 2. Tatsächlich vorgenommene Android-Änderungen
 
@@ -23,7 +23,7 @@ Die drei Dateien wurden nach dem Schreiben erneut über GitHub gelesen. Der komb
 
 ## 3. Cloudflare und Live-Deployment
 
-- Cloudflare bestätigt den statischen Worker `all-world-app-source-code` mit Deployment [e17397a7-88a9-4031-b735-9fc4b0eb8880](https://dash.cloudflare.com/), Version `cd82817f-3c00-410c-a418-e93562b3d62a`, 100 % Traffic; erstellt am 2026-10-27 um 16:56:10 UTC.
+- Cloudflare bestätigt den statischen Worker `all-world-app-source-code` mit Deployment-ID `e17397a7-88a9-4031-b735-9fc4b0eb8880`, Version `cd82817f-3c00-410c-a418-e93562b3d62a`, 100 % Traffic; erstellt am 2026-10-27 um 16:56:10 UTC.
 - Dieses Deployment liegt zeitlich **vor** den neuen Android-Commits von 19:21 UTC. Es ist daher kein Nachweis, dass diese späteren GitHub-Änderungen deployed wurden.
 - Die Live-Website konnte in dieser Ausführung nicht direkt abgerufen werden: Webabruf nicht verfügbar und `curl` scheiterte an DNS-Auflösung. Es wird kein neues Deployment oder Live-Ergebnis behauptet.
 - Der Auth-Worker `all-world-auth-api` hat weiterhin das Cloudflare-Deployment `9974ad11-f16b-4413-890d-a5b66e261a6c` vom 2026-10-23 mit 100 % Traffic. Die gelesenen Bindings umfassen `APP_ORIGIN`, `AUTH_DB` und das Secret-Binding `RATE_LIMIT_SECRET`; geheime Werte wurden nicht ausgelesen.
