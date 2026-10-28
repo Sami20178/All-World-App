@@ -92,3 +92,10 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Die PR-Validierung [#40749562652](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562652) und der zugehörige CI-Lauf [#40749562840](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562840) waren erfolgreich. Im PR-Deployment-Lauf [#40749562720](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562720) waren Deployment und Live-Prüfung übersprungen, weil der Lauf durch einen Pull Request ausgelöst wurde.
 - Das zuletzt gelistete Cloudflare-Deployment des Frontend-Workers ist von 2026-10-28 19:50:18 UTC und liegt vor dem Merge-Commit (20:04:01 UTC). Ein Post-Merge-Deployment und die sichtbare Live-Darstellung der Kategorien sind daher noch nicht bestätigt.
 - Die Google-Fonts-CDN-Links bleiben bestehen; lokale WOFF2-Dateien und Lizenzhinweise sind weiterhin offen. Es wurde kein Release erstellt und die nächste Version wurde nicht vergeben.
+
+
+## Cloudflare-Nachtrag nach Merge von PR #23 — 2026-10-28
+
+- Nach dem Frontend-Merge-Commit [7bb72f16a3e75bd7ff990ad62a88d455d6db4f06](https://github.com/Sami20178/All-World-App-Source-Code-/commit/7bb72f16a3e75bd7ff990ad62a88d455d6db4f06) listet Cloudflare zwei neue Deployments des bestehenden Frontend-Workers: `b1d7ee5d-74df-4c6a-b1ca-d91f60cfd0f0` um 20:04:26 UTC und `f231cea2-cf92-4e19-842f-128e9c057ee3` um 20:06:20 UTC. Die neueste Version `01a393cb-07b8-49fb-b12b-29b4d2c0d965` (Version 146) steht auf 100 % Traffic.
+- Die genaue Zuordnung eines Deployments zum GitHub-Commit ist durch die verfügbaren Run-Tools nicht belegt. Direkter HTTP-Abruf der Live-Website scheiterte weiterhin an DNS-Auflösung in der Prüfumgebung; sichtbare Kategorieänderungen gelten daher nicht als browserseitig bestätigt.
+- Lokale WOFF2-Fonts und Lizenzhinweise sind weiterhin offen. Kein App-Release und kein Tag wurde erstellt; das Release-Gate bleibt geschlossen.
