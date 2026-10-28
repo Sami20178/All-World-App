@@ -84,3 +84,11 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Es wurde kein Release und kein Tag erstellt. Das bekannte APK-Artefakt [Actions #40214453328](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40214453328) ist ein früheres temporäres Debug-Artefakt vor dem neuesten WebView-Commit, kein dauerhaftes Release-Asset und kein Nachweis eines Gerätetests.
 - Der detaillierte Audit ist in [PROJECT-PROGRESS-2026-10-28.md](PROJECT-PROGRESS-2026-10-28.md) dokumentiert; die laufende Plattform-Matrix steht in [PLATFORM-MATRIX.md](PLATFORM-MATRIX.md).
 - Release-Gate bleibt geschlossen: aktuelle Release-/Tag-Liste erneut prüfen, aktuellen Android-Build mit Signatur-/Asset-Prüfungen bestätigen, reale Android-/Fire-OS-Installation und Kernfunktionen testen sowie Live-Website/API-Fluss verifizieren.
+
+
+## Nachtrag nach Merge von PR #23 — 2026-10-28
+
+- Frontend-Main-Commit [7bb72f16a3e75bd7ff990ad62a88d455d6db4f06](https://github.com/Sami20178/All-World-App-Source-Code-/commit/7bb72f16a3e75bd7ff990ad62a88d455d6db4f06) übernimmt Space Grotesk für die Navigationskategorien und ersetzt positionsabhängige CSS-Selektoren durch explizite NORMAL/WORLD/CFW-Klassen.
+- Die PR-Validierung [#40749562652](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562652) und der zugehörige CI-Lauf [#40749562840](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562840) waren erfolgreich. Im PR-Deployment-Lauf [#40749562720](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40749562720) waren Deployment und Live-Prüfung übersprungen, weil der Lauf durch einen Pull Request ausgelöst wurde.
+- Das zuletzt gelistete Cloudflare-Deployment des Frontend-Workers ist von 2026-10-28 19:50:18 UTC und liegt vor dem Merge-Commit (20:04:01 UTC). Ein Post-Merge-Deployment und die sichtbare Live-Darstellung der Kategorien sind daher noch nicht bestätigt.
+- Die Google-Fonts-CDN-Links bleiben bestehen; lokale WOFF2-Dateien und Lizenzhinweise sind weiterhin offen. Es wurde kein Release erstellt und die nächste Version wurde nicht vergeben.
