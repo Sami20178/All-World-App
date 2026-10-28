@@ -29,7 +29,7 @@ Der Android-Workflow in Main verwendet Java 17, Android SDK/API 35, Build Tools 
 
 ## 3. Cloudflare, Deployment und Domains
 
-- Cloudflare-API bestätigt für den statischen Worker `all-world-app-source-code` das neueste gelistete Deployment [79659901-bca8-41ae-a03e-cd13342442aa](https://dash.cloudflare.com/), Version `1299741b-398e-4cb5-bebd-dcbf9d0ef661), **100 % Traffic**, erstellt 2026-10-28 19:50:18 UTC. Die zugehörige Worker-Version ist Nummer 144 und wurde um 19:50:15 UTC erstellt.
+- Cloudflare-API bestätigt für den statischen Worker `all-world-app-source-code` das neueste gelistete Deployment `79659901-bca8-41ae-a03e-cd13342442aa`, Version `1299741b-398e-4cb5-bebd-dcbf9d0ef661`, **100 % Traffic**, erstellt 2026-10-28 19:50:18 UTC. Die zugehörige Worker-Version ist Nummer 144 und wurde um 19:50:15 UTC erstellt.
 - Das Deployment liegt rund 36 Sekunden nach dem Frontend-Commit `4cf4417`. Die zeitliche Nähe spricht für einen neuen Deploy, aber die verfügbaren Tools lieferten keine GitHub-Run-ID oder eindeutige Commit-Zuordnung. Deshalb wird nicht behauptet, dass genau dieser Commit vollständig live verifiziert wurde.
 - Direkte HTTP-Aufrufe der Website und der API-Endpunkte `/healthz` und `/api/ready` scheiterten in dieser Ausführungsumgebung mit `curl: (6) Could not resolve host`. Der Webabruf war ebenfalls nicht verfügbar. Das beweist keinen Ausfall der Dienste; der Live-Inhalt bleibt hier ungeprüft.
 - Der Worker `all-world-auth-api` hat weiterhin Deployment `9974ad11-f16b-4413-890d-a5b66e261a6c` vom 2026-10-23 mit 100 % Traffic. Seine gelesenen Bindings: `APP_ORIGIN` (exakte Frontend-Origin), D1 `AUTH_DB` und Secret-Binding `RATE_LIMIT_SECRET`. Secret-Werte wurden nicht gelesen.
