@@ -6,7 +6,7 @@
 ## 1. Aktuelle GitHub-Stände
 
 ### Frontend/App
-- Aktueller gefundener Main-Commit: [4cf4417b0e72c000e3cb071ee4b795167a14f8de](https://github.com/Sami20178/All-World-App-Source-Code-/commit/4cf4417b0e72c000e3cb071ee4b795167a14f8de), 2026-10-28 19:49:42 UTC.
+- Aktueller Frontend-Main-Commit: [7bb72f16a3e75bd7ff990ad62a88d455d6db4f06](https://github.com/Sami20178/All-World-App-Source-Code-/commit/7bb72f16a3e75bd7ff990ad62a88d455d6db4f06), Merge von PR #23, erstellt 2026-10-28 20:04:01 UTC. Der vorherige Android-WebView-Fix liegt in [4cf4417](https://github.com/Sami20178/All-World-App-Source-Code-/commit/4cf4417b0e72c000e3cb071ee4b795167a14f8de).
 - Änderung: Android-WebView lädt nun die vertrauenswürdige HTTPS-Website-Origin statt einer lokalen `file://`-Seite. Datei- und Content-Zugriff sind deaktiviert, gemischte Inhalte werden blockiert, Safe Browsing wird ab API 26 aktiviert und externe HTTP(S)-Links werden außerhalb der WebView geöffnet.
 - Weitere heute gefundene Commits: [8336a35](https://github.com/Sami20178/All-World-App-Source-Code-/commit/8336a35b443274c93354802e89c972205844d4ee) (Auth-Regressionsprüfungen), [a06cbdf](https://github.com/Sami20178/All-World-App-Source-Code-/commit/a06cbdf57ea76560ea902bd2f894d36f10b8f636) (Kategorie-Typografie/Farben), [5287446](https://github.com/Sami20178/All-World-App-Source-Code-/commit/528744684e932db4cc551a331e3fa4ff20f82731) (Seriennummer-Eingabe), [9a2de92](https://github.com/Sami20178/All-World-App-Source-Code-/commit/9a2de92ee8f1359db97642e03bbd99f55bcec98c) (Switch-2-Präfixhinweise).
 - Die Datei `config.js` enthält `https://all-world-auth-api.docc-samisoliman.workers.dev`. Cloudflare zeigt `APP_ORIGIN` der Konto-API auf exakt `https://all-world-app-source-code.docc-samisoliman.workers.dev`.
@@ -14,7 +14,7 @@
 ### Node.js-Server
 - Aktueller gefundener Main-Commit: [ed049987b1217d3ad65780392315a8dc4c32d49e](https://github.com/Sami20178/All-World-App/commit/ed049987b1217d3ad65780392315a8dc4c32d49e), 2026-10-27 19:23:26 UTC.
 - Vorherige Commits im Verlauf: [0081d73](https://github.com/Sami20178/All-World-App/commit/0081d7302b7debe35d974d586d9246aec8485ff7) (Auditbericht) und [597a43a](https://github.com/Sami20178/All-World-App/commit/597a43a5ac670697f4e97e7da8b92ff8920f452b) (Server-/CI-Baseline).
-- Die offene PR-Suche fand im Frontend #23, #22, #7 und #6. [PR #23](https://github.com/Sami20178/All-World-App-Source-Code-/pull/23) bleibt offen; seine Änderungen für Space Grotesk und feste Kategorienklassen sind nicht in Main übernommen. PR #22 dokumentiert Server-Sicherheits-/Readiness-Prüfungen; #7 und #6 bleiben ebenfalls offen. Die Issues-Suche lieferte keine offenen Issues in den abgefragten Haupt-Repositories.
+- Die PR-Suche fand im Frontend #23, #22, #7 und #6. [PR #23](https://github.com/Sami20178/All-World-App-Source-Code-/pull/23) wurde nach erfolgreichen PR-Validierungen und abgeschlossenem Code-Review ohne Befunde per Squash-Merge in Main übernommen (Commit [7bb72f1](https://github.com/Sami20178/All-World-App-Source-Code-/commit/7bb72f16a3e75bd7ff990ad62a88d455d6db4f06)). PR #22 dokumentiert Server-Sicherheits-/Readiness-Prüfungen; #7 und #6 bleiben offen. Die Issues-Suche lieferte keine offenen Issues in den abgefragten Haupt-Repositories.
 
 ## 2. Tatsächliche Workflow-Ergebnisse
 
@@ -30,7 +30,7 @@ Der Android-Workflow in Main verwendet Java 17, Android SDK/API 35, Build Tools 
 ## 3. Cloudflare, Deployment und Domains
 
 - Cloudflare-API bestätigt für den statischen Worker `all-world-app-source-code` das neueste gelistete Deployment `79659901-bca8-41ae-a03e-cd13342442aa`, Version `1299741b-398e-4cb5-bebd-dcbf9d0ef661`, **100 % Traffic**, erstellt 2026-10-28 19:50:18 UTC. Die zugehörige Worker-Version ist Nummer 144 und wurde um 19:50:15 UTC erstellt.
-- Das Deployment liegt rund 36 Sekunden nach dem Frontend-Commit `4cf4417`. Die zeitliche Nähe spricht für einen neuen Deploy, aber die verfügbaren Tools lieferten keine GitHub-Run-ID oder eindeutige Commit-Zuordnung. Deshalb wird nicht behauptet, dass genau dieser Commit vollständig live verifiziert wurde.
+- Das Deployment liegt rund 36 Sekunden nach dem Frontend-Commit `4cf4417`, aber **vor** dem späteren Merge-Commit `7bb72f1` (20:04:01 UTC). Es ist daher kein Nachweis für die gemergten Kategorie-/Schriftänderungen. Die verfügbaren Tools lieferten keine GitHub-Push-Run-ID oder eindeutige Commit-Zuordnung; ein Post-Merge-Deployment ist nicht bestätigt.
 - Direkte HTTP-Aufrufe der Website und der API-Endpunkte `/healthz` und `/api/ready` scheiterten in dieser Ausführungsumgebung mit `curl: (6) Could not resolve host`. Der Webabruf war ebenfalls nicht verfügbar. Das beweist keinen Ausfall der Dienste; der Live-Inhalt bleibt hier ungeprüft.
 - Der Worker `all-world-auth-api` hat weiterhin Deployment `9974ad11-f16b-4413-890d-a5b66e261a6c` vom 2026-10-23 mit 100 % Traffic. Seine gelesenen Bindings: `APP_ORIGIN` (exakte Frontend-Origin), D1 `AUTH_DB` und Secret-Binding `RATE_LIMIT_SECRET`. Secret-Werte wurden nicht gelesen.
 - Die Cloudflare-Custom-Worker-Domain-Liste war leer. Zonen `allworld.com` und `allworld.dev` stehen auf `pending`; die beobachteten Nameserver zeigen noch auf die bisherigen DNS-Anbieter. `allworld.com` hat 20 bestehende DNS-Einträge einschließlich Mail-Einträgen, `allworld.dev` hat keine Einträge. Es wurden keine DNS-, TLS-, Zonen- oder Domain-Einstellungen verändert.
@@ -59,6 +59,6 @@ Der Android-Workflow in Main verwendet Java 17, Android SDK/API 35, Build Tools 
 1. Den Android-Workflow-Lauf für Main `4cf4417` über eine Actions-Auflistung mit Push-Run-Unterstützung abrufen; APK, Signatur und Artefakt prüfen.
 2. Die WebView-Änderung mit dem tatsächlichen Auth-Worker auf einem Android-Gerät testen; keine Lockerung des Origin-/CORS-Schutzes.
 3. Den Cloudflare-Deploy-Run und den Live-Inhalt über eine erreichbare Prüfumgebung bestätigen.
-4. Offizielle lokale WOFF2-Dateien samt Lizenzhinweisen beschaffen; PR #23 erst nach dieser Prüfung neu bewerten.
+4. Offizielle lokale WOFF2-Dateien samt Lizenzhinweisen beschaffen; PR #23 ist gemergt, aber die externen Font-CDN-Links bleiben ein separater offener Punkt.
 5. Schreibzugriff für das Server-Team-Repository und den exakten Source-Team-Repository-Namen klären.
 6. Erst nach erneuter Tag-/Release-Inventur und Erfüllung aller Release-Gates die nächste Versionsbezeichnung festlegen.
