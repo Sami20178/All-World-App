@@ -1,7 +1,7 @@
 # All World — Fortschrittsbericht 2026-10-28
 
-**Auditzeit:** 2026-10-28, etwa 20:54 Uhr Europe/Berlin (19:54 UTC).  
-**Ergebnis:** Die laufende Arbeit bleibt offen. In diesem Durchlauf wurde kein App-Code verändert, keine APK neu gebaut und kein Release erstellt. Dieser Bericht dokumentiert die tatsächlich abgefragten Zustände.
+**Auditdatum:** 2026-10-28. Ereigniszeiten in diesem Bericht stammen aus den jeweiligen GitHub-/Cloudflare-Zeitstempeln in UTC.  
+**Ergebnis:** Die laufende Arbeit bleibt offen. PR #23 wurde nach erfolgreichen PR-Validierungen in Frontend-Main gemergt; außerdem wurden Fortschrittsbericht, Plattform-Matrix und Versionsregister im Server-Repository aktualisiert. Keine neue APK wurde gebaut und kein Release erstellt.
 
 ## 1. Aktuelle GitHub-Stände
 
