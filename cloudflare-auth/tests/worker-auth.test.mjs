@@ -52,6 +52,56 @@ function cookieFrom(response) {
 }
 async function body(response) { return response.json(); }
 
+test("Cloudflare auth Worker denies private account endpoints without a valid session", async () => {
+  const bindings = env();
+  const protectedRoutes = [
+    { method: "GET", path: "/api/auth/linked" },
+    { method: "POST", path: "/api/auth/link", body: { username: "someone", password: "not-a-real-password" } },
+    { method: "POST", path: "/api/auth/switch", body: { accountId: "not-a-real-account" } },
+    { method: "GET", path: "/api/account" },
+    { method: "GET", path: "/api/account/data" },
+    { method: "POST", path: "/api/account/data", body: { type: "preferences", data: { theme: "dark" } } },
+    { method: "PUT", path: "/api/account/data/example-id", body: { type: "preferences", data: { theme: "black" } } },
+    { method: "DELETE", path: "/api/account/data/example-id" },
+    { method: "DELETE", path: "/api/account", body: { password: "not-a-real-password" } }
+  ];
+
+  for (const route of protectedRoutes) {
+    const response = await worker.fetch(request(route.path, {
+      method: route.method,
+      ...(route.body ? { body: JSON.stringify(route.body) } : {})
+    }), bindings);
+    assert.equal(response.status, 401, `${route.method} ${route.path} must require a valid session`);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
+    assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+  }
+});
+
+test("Cloudflare auth Worker rejects and removes expired sessions", async () => {
+  const bindings = env();
+  const registered = await worker.fetch(request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ username: "expired_session_user", password: "A-long-test-password!" })
+  }), bindings);
+  assert.equal(registered.status, 201);
+
+  const cookie = cookieFrom(registered);
+  const token = cookie.slice("allworld.sid=".length);
+  const tokenHash = Buffer.from(await webcrypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token)
+  )).toString("base64url");
+  bindings.AUTH_DB.db.prepare("UPDATE sessions SET expires_at=? WHERE token_hash=?").run(Date.now() - 1000, tokenHash);
+
+  const response = await worker.fetch(request("/api/account", { headers: { Cookie: cookie } }), bindings);
+  assert.equal(response.status, 401, "expired sessions must not authorize account access");
+  assert.equal(
+    bindings.AUTH_DB.db.prepare("SELECT token_hash FROM sessions WHERE token_hash=?").get(tokenHash),
+    undefined,
+    "expired sessions must be removed when accessed"
+  );
+});
+
 test("Cloudflare auth Worker validates origin, stores hashed passwords, and supports sessions and account data", async () => {
   const bindings = env();
 
