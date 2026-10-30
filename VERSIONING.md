@@ -18,7 +18,7 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Build-Workflow: [Frontend Android Actions #38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839), Commit `0a42f6f2a78147b4795df022f81c1ceed0fde7bd`.
 - Der Server stellt Authentifizierungs-Endpunkte bereit, muss aber auf einer erreichbaren HTTPS-Adresse betrieben und passend zur App konfiguriert werden.
 - Server-Validierung mit Syntaxcheck und neuen API-Smoke-Tests erfolgreich: [Lauf #38126297531](https://github.com/Sami20178/All-World-App/actions/runs/38126297531), Commit `be57c4cde622e3271ac9c8e1b5f290b83b69d7e3`. Abgedeckt sind Health, Eingabevalidierung, Registrierung, Duplikatschutz, Sitzung, geschützter Account-Endpunkt, Login und Logout. Das ist kein Produktionstest.
-- GitHub-Releases in diesem Repository: keine veröffentlicht.
+- Das Server-Repository enthält die Legacy-Release [All World](https://github.com/Sami20178/All-World-App/releases/tag/All-World) mit Tag `All-World` (2026-10-28). Sie gehört nicht zum Versionsschema und bleibt unverändert; eine Release `First Classic 0.0.0.0` existiert noch nicht.
 - Release-Status: noch nicht veröffentlicht.
 - APK: wird ausschließlich im Frontend-Repository aus dem Android-Projekt gebaut; erst nach Installations-/Kernfunktionstests als echtes Release-Asset verlinken. Der Server selbst ist keine APK.
 - Die aktuelle Server-Dateispeicherung in JSON und der In-Memory-Session-Store sind Starter-Konfigurationen, nicht für öffentlichen Produktionseinsatz ausreichend.
@@ -99,3 +99,16 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Nach dem Frontend-Merge-Commit [7bb72f16a3e75bd7ff990ad62a88d455d6db4f06](https://github.com/Sami20178/All-World-App-Source-Code-/commit/7bb72f16a3e75bd7ff990ad62a88d455d6db4f06) listet Cloudflare zwei neue Deployments des bestehenden Frontend-Workers: `b1d7ee5d-74df-4c6a-b1ca-d91f60cfd0f0` um 20:04:26 UTC und `f231cea2-cf92-4e19-842f-128e9c057ee3` um 20:06:20 UTC. Die neueste Version `01a393cb-07b8-49fb-b12b-29b4d2c0d965` (Version 146) steht auf 100 % Traffic.
 - Die genaue Zuordnung eines Deployments zum GitHub-Commit ist durch die verfügbaren Run-Tools nicht belegt. Direkter HTTP-Abruf der Live-Website scheiterte weiterhin an DNS-Auflösung in der Prüfumgebung; sichtbare Kategorieänderungen gelten daher nicht als browserseitig bestätigt.
 - Lokale WOFF2-Fonts und Lizenzhinweise sind weiterhin offen. Kein App-Release und kein Tag wurde erstellt; das Release-Gate bleibt geschlossen.
+
+
+## Aktueller Audit 2026-10-30
+
+- Release-/Tag-Stand erneut geprüft: Dieses Repository hat die Legacy-Release `All World` / Tag `All-World`; das Frontend-Repository hat keine Releases und keine Tags. Die Legacy-Release wird nicht umbenannt, nicht überschrieben und nicht als App-Version gezählt.
+- Nächste passende gemeinsame Version bleibt **First Classic 0.0.0.0**. Kein Release/Tag dieser Version wurde erstellt.
+- Neuester Server-Main-Commit: [77bbc838ba9c153e5070170489fce61410140a8f](https://github.com/Sami20178/All-World-App/commit/77bbc838ba9c153e5070170489fce61410140a8f), ergänzt Tests für nicht angemeldete private Account-Routen und abgelaufene Sitzungen.
+- [PR #12](https://github.com/Sami20178/All-World-App/pull/12) wurde nach erfolgreichen Cloudflare-Auth-Worker-, Node-Server- und API-CI-Prüfungen gemergt. Die Post-Merge-Läufe #41116011422, #41116011560 und #41116011673 waren ebenfalls erfolgreich.
+- Frontend-Deploy-Workflow wurde im Frontend-Repository korrigiert; [Deploy #41115090848](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41115090848) und [Frontend-Validierung #41115090940](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41115090940) waren erfolgreich. Das ist ein Web-Deploy, kein Node-Server-Deploy.
+- Der Android-Build auf dem Frontend-Commit vor der Workflow-Korrektur wurde erfolgreich gebaut und signatur-/asset-geprüft, aber der Upload scheiterte zweimal am GitHub-Actions-Artefaktkontingent. Kein APK-Download, kein Geräte-/Fire-OS-Test und kein App-Release.
+- Die Cloudflare-Konto-API ist in der Frontend-Konfiguration auf den vorhandenen Worker `all-world-auth-api` ausgerichtet. Geheimnisse wurden nicht gelesen. Der OAuth-Katalog ist keine Bestätigung, dass alle Anbieter aktiviert sind; jeder Provider benötigt eigene serverseitige Zugangsdaten und Callback-Prüfungen.
+- Die Cloudflare-Zonen `allworld.com` und `allworld.dev` stehen auf `pending`; Custom-Worker-Domains sind nicht gelistet. Keine Domain-, DNS- oder TLS-Einstellungen geändert.
+- Team-Server-Repository ist lesbar, aber Branch-Erstellung wurde mit 403 verweigert. Das angegebene Source-Code-Team-Repository ist über die Integration nicht auffindbar (404); keine Synchronisierung behauptet.
