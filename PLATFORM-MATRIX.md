@@ -26,3 +26,17 @@
 - Externe Google Fonts werden derzeit noch referenziert; lokal gespeicherte WOFF2-Dateien und Lizenzhinweise sind nicht bestätigt. Keine Platzhalter-Dateien verwenden.
 - Die Konto-API hat Cloudflare-Bindings `APP_ORIGIN`, D1 `AUTH_DB` und Secret-Binding `RATE_LIMIT_SECRET`; geheime Werte nicht dokumentieren. Live-Register/Login/Logout- und Cookie-/CORS-Tests bleiben offen.
 - Team-Synchronisierung ist blockiert: Schreibzugriff auf das Server-Team-Repository wurde mit 403 verweigert; das Source-Code-Team-Repository liefert 404.
+
+
+## Statusnachtrag 2026-10-30
+
+| Plattform | Status | Nachweis / Einschränkung |
+|---|---|---|
+| Web / Cloudflare Worker | deployed; begrenzte Live-Routenprüfung bestanden | Frontend-Workflow #41115090848 deployte den statischen Worker; die Route-/Inhaltsprüfungen bestanden. Kein Node.js-Server-Deploy daraus ableiten. |
+| Android | Debug-APK gebaut und geprüft; nicht als Download verfügbar | Build und Signatur-/Web-Asset-Prüfungen erfolgreich; GitHub-Artefakt-Upload scheiterte am ausgeschöpften Speicherquota. Kein Release-Asset, kein Gerätetest. |
+| Fire OS | geplant, nicht getestet | Fire HD 8/10/Fire Max nicht auf echter Hardware geprüft. |
+| Windows / macOS / Linux | nicht gebaut | Keine Desktop-Pakete oder Hardwaretests belegt. |
+| iOS/iPadOS | blockiert/nicht gebaut | Apple-Build-Werkzeuge, Zertifikate und Signierung fehlen in dieser Ausführung. |
+| Konsolen | separate Machbarkeitsprüfung offen | Kein Switch-/Wii-U-/Wii-/GameCube-Build oder Hardwaretest. |
+
+Die Web/PWA-Quelle ist vorhanden; Offline-, Browser-, Barrierefreiheits- und responsives Verhalten sind noch nicht vollständig getestet. Lokale WOFF2-Fonts und Lizenzhinweise sind offen. Eine eigene Domain wurde nicht eindeutig zugeordnet: beide vorhandenen Zonen stehen auf `pending`; keine DNS-Änderungen.
