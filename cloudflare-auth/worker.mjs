@@ -869,8 +869,14 @@ async function handle(request, env) {
     }
 
     return json(request, env, { error: "API-Endpunkt nicht gefunden." }, 404);
-  } catch {
-    return json(request, env, { error: "Interner Authentifizierungsfehler." }, 500);
+  } catch (error) {
+    // Keep internal details in server logs only; never expose database or secret data to clients.
+    console.error("All World Auth API request failed", {
+      method: request.method,
+      path: new URL(request.url).pathname,
+      error: error && error.message ? error.message : String(error)
+    });
+    return json(request, env, { error: "Interner Authentifizierungsfehler. Bitte später erneut versuchen." }, 500);
   }
 }
 
