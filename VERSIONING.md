@@ -14,14 +14,14 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 ## First Classic 0.0.0.0
 
 - Zweck: erste gemeinsame App-/Server-Versionslinie.
-- Frontend enthält ein Android-WebView-Projekt; GitHub Actions hat die Debug-APK im aktuellen Lauf [#38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839) gebaut. Der Workflow hat APK-Signatur und gebündelte Web-Assets erfolgreich geprüft; eine Geräteinstallation und Kernfunktionstests sind noch offen. Der Build ist eine Debug-APK, keine Produktionssignierung.
-- Build-Workflow: [Frontend Android Actions #38121946839](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/38121946839), Commit `0a42f6f2a78147b4795df022f81c1ceed0fde7bd`.
-- Der Server stellt Authentifizierungs-Endpunkte bereit, muss aber auf einer erreichbaren HTTPS-Adresse betrieben und passend zur App konfiguriert werden.
-- Server-Validierung mit Syntaxcheck und neuen API-Smoke-Tests erfolgreich: [Lauf #38126297531](https://github.com/Sami20178/All-World-App/actions/runs/38126297531), Commit `be57c4cde622e3271ac9c8e1b5f290b83b69d7e3`. Abgedeckt sind Health, Eingabevalidierung, Registrierung, Duplikatschutz, Sitzung, geschützter Account-Endpunkt, Login und Logout. Das ist kein Produktionstest.
-- Das Server-Repository enthält die Legacy-Release [All World](https://github.com/Sami20178/All-World-App/releases/tag/All-World) mit Tag `All-World` (2026-10-28). Sie gehört nicht zum Versionsschema und bleibt unverändert; eine Release `First Classic 0.0.0.0` existiert noch nicht.
-- Release-Status: noch nicht veröffentlicht.
-- APK: wird ausschließlich im Frontend-Repository aus dem Android-Projekt gebaut; erst nach Installations-/Kernfunktionstests als echtes Release-Asset verlinken. Der Server selbst ist keine APK.
-- Die aktuelle Server-Dateispeicherung in JSON und der In-Memory-Session-Store sind Starter-Konfigurationen, nicht für öffentlichen Produktionseinsatz ausreichend.
+- Das Frontend enthält ein Android-WebView-Projekt. Der neueste Android-Buildversuch [#41214281792](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41214281792) baute und prüfte die Debug-APK erfolgreich, scheiterte aber beim Upload des Actions-Artefakts. Für diesen Lauf ist kein Download-Artefakt vorhanden. Ein älteres temporäres Debug-Artefakt [#40005689088](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/40005689088) existiert noch, stammt jedoch von einem älteren Frontend-Commit und ist kein Release-Asset.
+- Aktueller Server-Main-Commit: [`21d01c2`](https://github.com/Sami20178/All-World-App/commit/21d01c2aa78382f5257115fd704c396b81333849). Node-Server-Validierung [#41116545262](https://github.com/Sami20178/All-World-App/actions/runs/41116545262), API-CI [#41116545147](https://github.com/Sami20178/All-World-App/actions/runs/41116545147) und Cloudflare-API-/Auth-/MCP-Smoke-Test [#41201107664](https://github.com/Sami20178/All-World-App/actions/runs/41201107664) waren erfolgreich. Das sind automatisierte Tests, kein Nachweis für einen produktiven Serverbetrieb.
+- Der Node.js-Server verwendet SQLite für Konten und Sitzungen. Ein öffentlicher produktiver Host und ein erfolgreicher Browser-Ende-zu-Ende-Fluss von der Website zum Node.js-Server sind nicht bestätigt.
+- Die Frontend-Datei `config.js` verweist aktuell auf den separaten Cloudflare-Auth-Worker `all-world-auth-api.docc-samisoliman.workers.dev`, nicht auf das Node.js-Server-Repository. Diese Komponenten dürfen nicht als bereits identische oder vollständig verbundene API behandelt werden.
+- Das Server-Repository enthält die Legacy-Release [All World](https://github.com/Sami20178/All-World-App/releases/tag/All-World) mit Tag `All-World` vom 28.10.2026. Sie gehört nicht zum Versionsschema und bleibt unverändert; eine Release `First Classic 0.0.0.0` existiert noch nicht.
+- APK/AAB gehören ausschließlich zum tatsächlich gebauten Frontend und sind keine Server-Binaries. Der Server-Release muss seine eigenen Serveränderungen dokumentieren und auf das Frontend-Release verweisen.
+- Release-Status: noch nicht veröffentlicht. Geräteinstallation und Kernfunktionstests auf Android sowie ein Fire-OS-Test sind offen.
+- Die nächste gemeinsame Version bleibt `First Classic 0.0.0.0`.
 
 ## Release-Regeln
 
