@@ -552,6 +552,7 @@ async function handleOAuthCallback(request, env, db, slug) {
         const takenEmail = await db.prepare("SELECT id FROM users WHERE email_normalized=?").bind(normalizedEmail).first();
         if (!takenEmail) email = candidateEmail.trim();
       }
+      authStage = "register.password_hash";
       const user = {
         id: crypto.randomUUID(),
         username,
@@ -587,6 +588,7 @@ async function handleOAuthCallback(request, env, db, slug) {
 }
 
 async function handle(request, env) {
+  let authStage = "route";
   const url = new URL(request.url);
   const path = url.pathname;
   const authPath = path.startsWith("/api/auth/") || path === "/api/account" || path.startsWith("/api/account/") || path === "/api/health" || path === "/api/ready";
@@ -620,6 +622,7 @@ async function handle(request, env) {
   }
 
   try {
+    authStage = "schema";
     await ensureSchema(env.AUTH_DB);
     const db = env.AUTH_DB;
 
@@ -642,6 +645,7 @@ async function handle(request, env) {
     }
 
     if (request.method === "POST" && path === "/api/auth/register") {
+      authStage = "register.body";
       let body;
       try { body = await readJson(request); }
       catch (error) {
@@ -651,6 +655,7 @@ async function handle(request, env) {
       const email = typeof body.email === "string" ? body.email.trim() : "";
       const emailNormalized = email ? email.toLowerCase() : null;
       const password = typeof body.password === "string" ? body.password : "";
+      authStage = "register.rate_limit";
       if (!(await consumeRateLimit(request, env, "register", "", 5))) {
         return json(request, env, { error: "Zu viele Registrierungsversuche. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
       }
@@ -672,6 +677,7 @@ async function handle(request, env) {
         password_hash: await hashPassword(password),
         created_at: new Date().toISOString()
       };
+      authStage = "register.database_insert";
       try {
         await db.prepare("INSERT INTO users(id,username,username_normalized,email,email_normalized,password_hash,created_at) VALUES(?,?,?,?,?,?,?)")
           .bind(user.id, user.username, user.username_normalized, user.email, user.email_normalized, user.password_hash, user.created_at).run();
@@ -682,12 +688,15 @@ async function handle(request, env) {
         if (/UNIQUE constraint failed: users\./i.test(message)) return json(request, env, { error: "Benutzername oder E-Mail-Adresse wird bereits verwendet." }, 409);
         throw error;
       }
+      authStage = "register.session";
+      authStage = "login.session";
       await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
       return json(request, env, { user: publicUser(user) }, 201, { "Set-Cookie": sessionCookie(token) });
     }
 
     if (request.method === "POST" && path === "/api/auth/login") {
+      authStage = "login.body";
       let body;
       try { body = await readJson(request); }
       catch (error) {
@@ -695,6 +704,7 @@ async function handle(request, env) {
       }
       const identifier = typeof body.username === "string" ? body.username.trim() : "";
       const password = typeof body.password === "string" ? body.password : "";
+      authStage = "login.rate_limit";
       const loginIpAllowed = await consumeRateLimit(request, env, "login-ip", "", 40);
       const loginIdentityAllowed = await consumeRateLimit(request, env, "login-identifier", identifier, 10);
       if (!loginIpAllowed || !loginIdentityAllowed) {
@@ -703,10 +713,12 @@ async function handle(request, env) {
       if (!identifier || identifier.length > 254 || password.length > 72) {
         return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
       }
+      authStage = "login.user_lookup";
       const normalized = identifier.toLowerCase();
       const user = await db.prepare(
         "SELECT id,username,username_normalized,email,email_normalized,password_hash,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
       ).bind(normalized, normalized).first();
+      authStage = "login.password_verify";
       const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
       if (!user || !passwordOk) return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
       await revokeCurrentSession(request, env);
@@ -874,7 +886,9 @@ async function handle(request, env) {
     console.error("All World Auth API request failed", {
       method: request.method,
       path: new URL(request.url).pathname,
-      error: error && error.message ? error.message : String(error)
+      stage: authStage,
+      error: error && error.message ? error.message : String(error),
+      stack: error && error.stack ? String(error.stack).slice(0, 4000) : ""
     });
     return json(request, env, { error: "Interner Authentifizierungsfehler. Bitte später erneut versuchen." }, 500);
   }
