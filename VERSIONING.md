@@ -112,3 +112,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Die Cloudflare-Konto-API ist in der Frontend-Konfiguration auf den vorhandenen Worker `all-world-auth-api` ausgerichtet. Geheimnisse wurden nicht gelesen. Der OAuth-Katalog ist keine Bestätigung, dass alle Anbieter aktiviert sind; jeder Provider benötigt eigene serverseitige Zugangsdaten und Callback-Prüfungen.
 - Die Cloudflare-Zonen `allworld.com` und `allworld.dev` stehen auf `pending`; Custom-Worker-Domains sind nicht gelistet. Keine Domain-, DNS- oder TLS-Einstellungen geändert.
 - Team-Server-Repository ist lesbar, aber Branch-Erstellung wurde mit 403 verweigert. Das angegebene Source-Code-Team-Repository ist über die Integration nicht auffindbar (404); keine Synchronisierung behauptet.
+
+
+## Gemeinsame Release-Gate-Nachprüfung 2026-11-01
+
+- Frontend-Main: [`883e991`](https://github.com/Sami20178/All-World-App-Source-Code-/commit/883e991e5a0adbf04d5851366ebcbdd6319b57b6). Die fünf Main-Workflows auf diesem Commit endeten ohne Runner-Steps mit Fehler; der Android-Artefaktabruf lieferte keine Dateien.
+- Server-Main: [`e9ee7fe`](https://github.com/Sami20178/All-World-App/commit/e9ee7fe50e1860e8c76d5ea2c43360f34a35d139). Draft-PR [#13](https://github.com/Sami20178/All-World-App/pull/13) enthält einen Ein-Zeilen-Fix im Cloudflare-OAuth-Callback. Node-Validierung, API-CI und Auth-Worker-Validierung waren auf dem Branch erfolgreich; der Cloudflare-Preview-Build wurde als fehlgeschlagen gemeldet. Der PR ist nicht gemergt und es gibt kein neues Produktionsdeployment.
+- Die Frontend-Release-Liste ist leer; die Frontend-Tag-Referenzliste ist leer. Dieses Server-Repository enthält weiterhin nur die Legacy-Release [All World](https://github.com/Sami20178/All-World-App/releases/tag/All-World) mit Tag `All-World`; sie ist keine Version aus dem gemeinsamen App-Schema.
+- Es wurde keine neue Android-APK als Release-Asset bereitgestellt. Kein Release und kein neues Versions-Tag wurden angelegt.
+- Die nächste gemeinsame unvergebene App-Version bleibt **First Classic 0.0.0.0**. Ein gemeinsames Release bleibt gesperrt, bis eine aktuelle APK tatsächlich gebaut, als Asset verfügbar und angemessen getestet ist.
