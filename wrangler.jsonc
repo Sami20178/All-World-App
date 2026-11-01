@@ -3,7 +3,7 @@
   "main": "worker.js",
   "compatibility_date": "2026-10-23",
   "workers_dev": true,
-  "preview_urls": true,
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "OAUTH_DB",
