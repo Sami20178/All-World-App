@@ -119,6 +119,13 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
   }), bindings);
   assert.equal(invalidEmail.status, 400, "invalid email must be rejected");
 
+  const missingEmail = await worker.fetch(request("/api/auth/register", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": "192.0.2.120" },
+    body: JSON.stringify({ username: "no_email_user", password: "A-long-test-password!" })
+  }), bindings);
+  assert.equal(missingEmail.status, 400, "registration must require an email address");
+
   const email = "sample@example.test";
   const password = "A-long-test-password!";
   const registered = await worker.fetch(request("/api/auth/register", {
@@ -138,7 +145,7 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
   const duplicateUsername = await worker.fetch(request("/api/auth/register", {
     method: "POST",
     headers: { "CF-Connecting-IP": "192.0.2.14" },
-    body: JSON.stringify({ username: "SAMPLE_USER", password })
+    body: JSON.stringify({ username: "SAMPLE_USER", email: "another@example.test", password })
   }), bindings);
   assert.equal(duplicateUsername.status, 409, "username uniqueness must be case-insensitive");
 
