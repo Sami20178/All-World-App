@@ -552,7 +552,6 @@ async function handleOAuthCallback(request, env, db, slug) {
         const takenEmail = await db.prepare("SELECT id FROM users WHERE email_normalized=?").bind(normalizedEmail).first();
         if (!takenEmail) email = candidateEmail.trim();
       }
-      authStage = "register.password_hash";
       const user = {
         id: crypto.randomUUID(),
         username,
