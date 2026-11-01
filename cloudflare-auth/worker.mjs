@@ -661,7 +661,7 @@ async function handle(request, env) {
       if (!USERNAME_PATTERN.test(username)) {
         return json(request, env, { error: "Der Benutzername muss 3–32 Zeichen lang sein und darf Buchstaben, Zahlen, _ und - enthalten." }, 400);
       }
-      if (email.length > 254 || (email && !EMAIL_PATTERN.test(email))) {
+      if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
         return json(request, env, { error: "Gib eine gültige E-Mail-Adresse ein." }, 400);
       }
       if (password.length < 8 || password.length > 72 || new TextEncoder().encode(password).length > 72) {
