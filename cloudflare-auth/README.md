@@ -4,7 +4,7 @@ This directory contains a separate Cloudflare Workers + D1 implementation for Al
 
 ## Included now
 
-- Username registration and login, with optional email and login by username or email.
+- Registration with username, required email, and password; login by username or email. The email-required change is in PR #14 and is not live until merge and deployment.
 - PBKDF2-HMAC-SHA-256 password hashes using a per-user random salt.
 - Persistent D1 sessions stored as token hashes; cookies are HttpOnly, Secure, and SameSite=None.
 - Exact HTTPS Origin checks for state-changing requests, credentialed CORS, request-size validation, and persistent rate limits.
@@ -55,3 +55,10 @@ The frontend currently uses `https://all-world-auth-api.docc-samisoliman.workers
 - No email-sending service binding is configured. Email verification and password reset remain unimplemented.
 - The frontend health/readiness/provider-discovery smoke test is not a full registration/login/logout test. No production account was created or changed.
 - The separate Node.js server in the repository is not the API URL currently selected by the frontend.
+
+## Preview safety
+
+- Worker Previews use the separate D1 database all-world-mcp-oauth-preview through the Wrangler previews block.
+- Version URLs are explicitly disabled with preview_urls=false because Version URLs use top-level bindings and could otherwise write to the production D1 database.
+- Use the Cloudflare Workers Builds command npx wrangler preview for isolated previews. Do not use Wrangler Version URLs or run wrangler deploy from this feature branch.
+- Worker Previews can be publicly reachable; use only the isolated preview database and synthetic test data. No production accounts or data belong in preview.
