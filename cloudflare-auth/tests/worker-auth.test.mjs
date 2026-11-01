@@ -81,7 +81,7 @@ test("Cloudflare auth Worker rejects and removes expired sessions", async () => 
   const bindings = env();
   const registered = await worker.fetch(request("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ username: "expired_session_user", password: "A-long-test-password!" })
+    body: JSON.stringify({ username: "expired_session_user", email: "expired@example.test", password: "A-long-test-password!" })
   }), bindings);
   assert.equal(registered.status, 201);
 
