@@ -17,7 +17,7 @@ The Worker supports a configurable OAuth 2.0 authorization-code flow for provide
 
 The Worker only lists providers with valid server-side configuration. It does not advertise `apple` or `supercell` through this generic adapter; Apple requires a dedicated, verified ID-token implementation before it can be enabled. OAuth state is single-use, expires after ten minutes, is bound to an HttpOnly/Secure browser cookie, and is checked before exchanging the code. Provider secrets are never returned to the browser or stored in Git. Email is only copied to a new account when the configured profile field explicitly marks it verified; an existing email account is never auto-linked.
 
-Email verification and password reset are still not implemented in this Worker. Do not connect the production frontend until the Worker is deployed, its D1 binding and APP_ORIGIN are configured, provider credentials are added through Cloudflare secret settings, and live HTTPS tests pass.
+Email verification and password reset are still not implemented in this Worker. As of 2026-11-01, the production frontend is configured to use this Worker. GitHub Actions live smoke test #41339823563 verified `/api/health`, `/api/ready`, and `/api/auth/providers` over HTTPS; provider discovery returned zero configured providers. The test was read-only and did not create an account or exercise a browser registration/login flow. Do not claim complete authentication until those end-to-end tests pass.
 
 ## Configuration
 
@@ -43,4 +43,15 @@ GET, POST /api/account/data
 PUT, DELETE /api/account/data/:id
 DELETE /api/account
 
-The frontend API URL must remain unchanged until the deployed endpoint has been verified with external HTTPS requests.
+The frontend currently uses `https://all-world-auth-api.docc-samisoliman.workers.dev`. The health/readiness/provider-discovery endpoints have passed an external HTTPS smoke test, but registration, login, logout, session restoration, and account management still require browser end-to-end verification.
+
+
+## Live deployment audit (2026-11-01)
+
+- Active Worker: `all-world-auth-api`; latest listed deployment version `91b33834-5905-4c5f-855b-35c6fd5339ad`, 100% traffic.
+- Bindings verified by name/type: `APP_ORIGIN`, `AUTH_DB` (D1), and secret binding `RATE_LIMIT_SECRET`. Secret values were not read.
+- `OAUTH_PROVIDERS_JSON` is not configured. Live provider discovery returns zero providers.
+- Read-only D1 SQL inspection confirmed the application tables `users`, `sessions`, `account_links`, `user_data`, `auth_rate_limits`, `oauth_identities`, and `oauth_states`. No `email_verified`, verification-token, or password-reset-token table is present.
+- No email-sending service binding is configured. Email verification and password reset remain unimplemented.
+- The frontend health/readiness/provider-discovery smoke test is not a full registration/login/logout test. No production account was created or changed.
+- The separate Node.js server in the repository is not the API URL currently selected by the frontend.
