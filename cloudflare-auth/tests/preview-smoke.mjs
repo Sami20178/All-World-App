@@ -66,9 +66,10 @@ try {
   if (registered.response.headers.get("access-control-allow-origin") !== origin) {
     throw new Error("Preview CORS origin did not match the configured test origin");
   }
-  if (!/httponly/i.test(registered.response.headers.get("set-cookie") || "")) {
-    throw new Error("Session cookie is missing HttpOnly");
-  }
+  const setCookie = registered.response.headers.get("set-cookie") || "";
+  if (!/httponly/i.test(setCookie)) throw new Error("Session cookie is missing HttpOnly");
+  if (!/secure/i.test(setCookie)) throw new Error("Session cookie is missing Secure");
+  if (!/samesite=none/i.test(setCookie)) throw new Error("Session cookie is missing SameSite=None for cross-origin credentials");
 
   const me = await call("/api/auth/me", { cookie: activeCookie });
   if (me.data.user?.username !== username) throw new Error("Session restoration failed");
