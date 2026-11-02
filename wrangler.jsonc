@@ -1,0 +1,23 @@
+{
+  "name": "all-world-app",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "OAUTH_DB",
+      "database_name": "all-world-mcp-oauth",
+      "database_id": "8738ef51-e1be-4b61-911e-720ffded2873"
+    }
+  ],
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "OAUTH_DB",
+        "database_name": "all-world-mcp-oauth-preview",
+        "database_id": "8a56e909-333d-4467-81a7-fa896078f29e"
+      }
+    ]
+  }
+}
