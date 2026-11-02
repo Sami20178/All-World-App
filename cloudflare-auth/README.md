@@ -4,7 +4,7 @@ This directory contains a separate Cloudflare Workers + D1 implementation for Al
 
 ## Included now
 
-- Registration with username, required email, and password; login by username or email. The email-required change is in PR #14 and is not live until merge and deployment.
+- Registration with username, required email, and password; login by username or email. The required-email rule and OAuth callback fix are merged in server main commit `0202ccbd1b6263e6c8cea40a52c67cdaaa24755f`; the live Worker has not yet been redeployed to that commit.
 - PBKDF2-HMAC-SHA-256 password hashes using a per-user random salt.
 - Persistent D1 sessions stored as token hashes; cookies are HttpOnly, Secure, and SameSite=None.
 - Exact HTTPS Origin checks for state-changing requests, credentialed CORS, request-size validation, and persistent rate limits.
@@ -62,3 +62,13 @@ The frontend currently uses `https://all-world-auth-api.docc-samisoliman.workers
 - Version URLs are explicitly disabled with preview_urls=false because Version URLs use top-level bindings and could otherwise write to the production D1 database.
 - Use the Cloudflare Workers Builds command npx wrangler preview for isolated previews. Do not use Wrangler Version URLs or run wrangler deploy from this feature branch.
 - Worker Previews can be publicly reachable; use only the isolated preview database and synthetic test data. No production accounts or data belong in preview.
+
+
+## Post-merge audit (2026-11-02)
+
+- Server main commit: [0202ccbd1b6263e6c8cea40a52c67cdaaa24755f](https://github.com/Sami20178/All-World-App/commit/0202ccbd1b6263e6c8cea40a52c67cdaaa24755f). It requires a valid email for new Cloudflare Worker registrations and includes the OAuth callback scope fix.
+- Main-branch checks passed: [API CI #41499443072](https://github.com/Sami20178/All-World-App/actions/runs/41499443072), [read-only API/OAuth smoke #41499443214](https://github.com/Sami20178/All-World-App/actions/runs/41499443214), [Node validation #41499443230](https://github.com/Sami20178/All-World-App/actions/runs/41499443230), and [Worker validation #41499443084](https://github.com/Sami20178/All-World-App/actions/runs/41499443084).
+- Cloudflare still lists production deployment `48823a4b-9ffd-47ff-be23-6070cc853fdf`, version `91b33834-5905-4c5f-855b-35c6fd5339ad`, at 100% traffic (created 2026-10-31). The merged source change is therefore **not yet live**.
+- The latest live smoke test verified `/api/health`, `/api/ready`, and provider discovery. It reported zero configured providers and did not create or change an account.
+- No `OAUTH_PROVIDERS_JSON` binding or email-delivery service is configured. Email verification and password reset remain unavailable; Google, Apple, Microsoft, GitHub, and Roblox are not live sign-in options. Supercell remains excluded.
+- The production D1 schema was inspected read-only. It has no `email_verified` field or verification/reset-token tables. No production account, password, token, or database row was changed.
