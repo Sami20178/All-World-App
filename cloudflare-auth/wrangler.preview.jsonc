@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "all-world-auth-api-preview",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "APP_ORIGIN": "https://auth-preview.invalid",
+    "API_PUBLIC_URL": "https://all-world-auth-api-preview.docc-samisoliman.workers.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "all-world-auth-preview",
+      "database_id": "79a0bdac-004d-4fde-becf-d9beb1fc31e5"
+    }
+  ]
+}
