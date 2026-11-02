@@ -29,3 +29,21 @@ jobs:
         run: node --check cloudflare-auth/worker.mjs
       - name: Run auth Worker smoke tests
         run: node --test cloudflare-auth/tests/worker-auth.test.mjs
+
+      - name: Validate isolated auth preview Wrangler configuration
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare-auth/wrangler.preview.jsonc
+
+  preview-smoke:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test isolated auth preview end-to-end
+        env:
+          AUTH_PREVIEW_BASE_URL: https://all-world-auth-api-preview.docc-samisoliman.workers.dev
+        run: node cloudflare-auth/tests/preview-smoke.mjs
