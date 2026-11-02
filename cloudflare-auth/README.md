@@ -72,3 +72,31 @@ The frontend currently uses `https://all-world-auth-api.docc-samisoliman.workers
 - The latest live smoke test verified `/api/health`, `/api/ready`, and provider discovery. It reported zero configured providers and did not create or change an account.
 - No `OAUTH_PROVIDERS_JSON` binding or email-delivery service is configured. Email verification and password reset remain unavailable; Google, Apple, Microsoft, GitHub, and Roblox are not live sign-in options. Supercell remains excluded.
 - The production D1 schema was inspected read-only. It has no `email_verified` field or verification/reset-token tables. No production account, password, token, or database row was changed.
+
+
+## Isolierte Auth-Preview (02.11.2026)
+
+Die Preview ist bewusst ein eigener Worker und eine eigene D1-Datenbank. Sie verwendet **nicht** die Produktionsdatenbank und akzeptiert nur den Test-Origin `https://auth-preview.invalid`. Das Frontend bleibt auf der Produktions-API; es wird keine Produktionskonfiguration geändert.
+
+| Ressource | Preview-Wert |
+|---|---|
+| Worker | `all-world-auth-api-preview` |
+| D1 | `all-world-auth-preview` |
+| D1-ID | `79a0bdac-004d-4fde-becf-d9beb1fc31e5` |
+| Region / Jurisdiction | EU / EEUR |
+| App-Origin | `https://auth-preview.invalid` |
+| API-Origin | `https://all-world-auth-api-preview.docc-samisoliman.workers.dev` |
+
+Die Konfiguration liegt in [`wrangler.preview.jsonc`](./wrangler.preview.jsonc). Sie enthält ausschließlich die Preview-D1-Bindung. `RATE_LIMIT_SECRET` wird als Cloudflare-Secret-Binding gesetzt; sein Wert gehört weder in Git noch in Logs. `OAUTH_PROVIDERS_JSON` bleibt ungesetzt, solange kein Anbieter vollständig eingerichtet und getestet wurde.
+
+### Preview bereitstellen
+
+1. Das Worker-Skript aus diesem Verzeichnis mit der Preview-Konfiguration bereitstellen:
+   `npx wrangler@4 deploy --config cloudflare-auth/wrangler.preview.jsonc`
+2. Für den Preview-Worker ein eigenes zufälliges Secret namens `RATE_LIMIT_SECRET` als Secret-Binding hinterlegen. Niemals den Produktionswert wiederverwenden.
+3. Die Preview-Suite ausführen: `node cloudflare-auth/tests/preview-smoke.mjs`.
+4. Nur synthetische Testdaten verwenden. Der Test erstellt ein Konto und löscht es am Ende wieder. Bei einem abgebrochenen Lauf können ausschließlich synthetische Preview-Daten zurückbleiben.
+
+Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-Preview-Test läuft nur auf `main` bzw. bei manuellem Workflow-Aufruf auf `main`; Pull-Request-Läufe greifen nicht auf die Preview-API zu.
+
+**Produktionsschutz:** Diese Datei enthält absichtlich keinen Produktions-Worker-Namen, keine Produktions-D1-ID und keine Produktions-Secret-Werte. Ein Preview-Deployment darf niemals mit dem MCP-Worker `all-world-app` oder dessen `OAUTH_DB` verbunden werden.
