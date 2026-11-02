@@ -137,11 +137,18 @@ async function main() {
 
     assert.equal((await jsonRequest("/api/auth/register",{username,password,email})).status,409);
     assert.equal((await jsonRequest("/api/auth/register",{username:username+"_other",password,email:email.toUpperCase()})).status,409,"duplicate email addresses must be rejected case-insensitively");
-    const usernameOnly="ci_username_only_"+Date.now().toString(36), usernameOnlyPassword="Username-only-password-2026!";
-    const usernameOnlyReg=await jsonRequest("/api/auth/register",{username:usernameOnly,password:usernameOnlyPassword});
-    assert.equal(usernameOnlyReg.status,201,"email should be optional for username/password registration");
-    const usernameOnlyLogin=await jsonRequest("/api/auth/login",{username:usernameOnly,password:usernameOnlyPassword});
-    assert.equal(usernameOnlyLogin.status,200,"username-only accounts should still log in");
+    const missingEmailUsername="ci_no_email_"+Date.now().toString(36);
+    assert.equal((await jsonRequest("/api/auth/register",{username:missingEmailUsername,password:"No-email-password-2026!"})).status,400,"new registrations must require an email address");
+
+    const legacyUsername="ci_legacy_"+Date.now().toString(36), legacyPassword="Legacy-password-2026!", legacyEmail=legacyUsername+"@example.test";
+    const legacyRegistration=await jsonRequest("/api/auth/register",{username:legacyUsername,email:legacyEmail,password:legacyPassword});
+    assert.equal(legacyRegistration.status,201,"a valid email registration should succeed");
+    database=new Database(dbPath);
+    try {
+      database.prepare("UPDATE users SET email=NULL,email_normalized=NULL WHERE username_normalized=?").run(legacyUsername.toLowerCase());
+    } finally { database.close(); }
+    const legacyLogin=await jsonRequest("/api/auth/login",{username:legacyUsername,password:legacyPassword});
+    assert.equal(legacyLogin.status,200,"existing legacy accounts without an email must remain able to log in by username");
     assert.equal((await request("/api/auth/me",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await request("/api/account",{headers:{cookie:firstCookie}})).status,200);
     assert.equal((await jsonRequest("/api/auth/logout",{},firstCookie)).status,200);
