@@ -58,10 +58,10 @@ The frontend currently uses `https://all-world-auth-api.docc-samisoliman.workers
 
 ## Preview safety
 
-- Worker Previews use the separate D1 database all-world-mcp-oauth-preview through the Wrangler previews block.
-- Version URLs are explicitly disabled with preview_urls=false because Version URLs use top-level bindings and could otherwise write to the production D1 database.
-- Use the Cloudflare Workers Builds command npx wrangler preview for isolated previews. Do not use Wrangler Version URLs or run wrangler deploy from this feature branch.
-- Worker Previews can be publicly reachable; use only the isolated preview database and synthetic test data. No production accounts or data belong in preview.
+- The root `wrangler.jsonc` belongs to the separate MCP Worker `all-world-app`. It binds `OAUTH_DB` to `all-world-mcp-oauth`; its `all-world-mcp-oauth-preview` preview binding is for MCP OAuth only.
+- That file is **not** an Auth Worker preview configuration. The production `all-world-auth-api` currently binds `AUTH_DB` to the production `all-world-auth` D1 database. No dedicated `all-world-auth-preview` database or Auth Worker preview binding was found in this audit.
+- Do not use the MCP preview database as a substitute. Do not run `wrangler preview` or `wrangler deploy` for this Auth Worker until a dedicated `cloudflare-auth/wrangler.jsonc` and isolated D1 preview database are created and verified.
+- The production Worker bindings are `APP_ORIGIN`, `AUTH_DB` (D1), and `RATE_LIMIT_SECRET` (secret text). The secret value was not read. Any future preview must use synthetic data and a distinct preview secret; no production accounts or data belong in preview.
 
 
 ## Post-merge audit (2026-11-02)
