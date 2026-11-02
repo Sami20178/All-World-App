@@ -103,6 +103,7 @@ Die Konfiguration liegt in [`wrangler.preview.jsonc`](./wrangler.preview.jsonc).
 2. Für den Preview-Worker ein eigenes zufälliges Secret namens `RATE_LIMIT_SECRET` als Secret-Binding hinterlegen. Niemals den Produktionswert wiederverwenden.
 3. Die Preview-Suite ausführen: `node cloudflare-auth/tests/preview-smoke.mjs`.
 4. Nur synthetische Testdaten verwenden. Der Test erstellt ein Konto und löscht es am Ende wieder. Bei einem abgebrochenen Lauf können ausschließlich synthetische Preview-Daten zurückbleiben.
+5. Der Smoke-Test prüft außerdem die Session-Cookie-Attribute `HttpOnly`, `Secure` und `SameSite=None` für den Cross-Origin-Frontend-Aufruf.
 
 Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-Preview-Test wird ausschließlich manuell über `workflow_dispatch` auf `main` gestartet, nachdem der Preview-Worker tatsächlich bereitgestellt wurde; Pull-Request- und normale Push-Läufe greifen nicht auf die Preview-API zu.
 
