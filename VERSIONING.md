@@ -131,3 +131,13 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Server-PR #13 bleibt Draft; seine Branch-CI war erfolgreich, der Cloudflare-Preview-Build jedoch fehlgeschlagen. Es gibt keinen Merge und kein neues Server-Produktionsdeployment.
 - Frontend-Releases und -Tags sind leer. Dieses Server-Repository besitzt weiterhin nur die Legacy-Release `All World` / Tag `All-World`; sie zählt nicht als App-Version der festgelegten Reihenfolge.
 - Die nächste gemeinsame unvergebene App-Version bleibt **First Classic 0.0.0.0**. Kein gemeinsames Release und kein neues Tag wurde erstellt.
+
+
+## Release-Audit 2026-11-02, 19:44 CET
+
+- Server-Main steht auf `0202ccbd1b6263e6c8cea40a52c67cdaaa24755f`. Nach dem Merge von PR #14 waren API-CI #41499443072, Auth-/MCP-Smoke #41499443214, Node-Validierung #41499443230 und Auth-Worker-Validierung #41499443084 erfolgreich.
+- Die veröffentlichte Server-Release-Liste enthält weiterhin nur die Legacy-Release [All World](https://github.com/Sami20178/All-World-App/releases/tag/All-World) mit Tag `All-World` und Asset `All-World-Splash.apk` (18.584 Byte). Sie gehört nicht zur gemeinsamen App-Versionsfolge.
+- Die GitHub-Tag-Listenabfrage war in dieser Ausführung über die aktuelle Integration nicht verfügbar. Es wird daher kein vollständiger Tag-Status behauptet.
+- Team-Server-Main steht auf `9c0653484273d55a9f4f593e82b021d057d20386`; die relevanten Server-/Worker-/Konfigurationsdateien stimmen mit dem Upstream überein. Die vier Team-Server-Workflows nach dem Merge waren erfolgreich.
+- Der Cloudflare-Auth-Worker wurde nach PR #14 nicht neu deployed. Aktives Deployment bleibt `48823a4b-9ffd-47ff-be23-6070cc853fdf`, Version `91b33834-5905-4c5f-855b-35c6fd5339ad` vom 31.10.2026. Der gemergte Code ist CI-geprüft, aber nicht als produktiv live bestätigt.
+- Kein neues Server-Release und kein Versions-Tag wurde erstellt. Die nächste gemeinsame unvergebene App-Version bleibt `First Classic 0.0.0.0`; die APK-Pflicht und alle Geräte-/Release-Gates bleiben unverändert.
