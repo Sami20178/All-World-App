@@ -97,6 +97,6 @@ Die Konfiguration liegt in [`wrangler.preview.jsonc`](./wrangler.preview.jsonc).
 3. Die Preview-Suite ausführen: `node cloudflare-auth/tests/preview-smoke.mjs`.
 4. Nur synthetische Testdaten verwenden. Der Test erstellt ein Konto und löscht es am Ende wieder. Bei einem abgebrochenen Lauf können ausschließlich synthetische Preview-Daten zurückbleiben.
 
-Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-Preview-Test läuft nur auf `main` bzw. bei manuellem Workflow-Aufruf auf `main`; Pull-Request-Läufe greifen nicht auf die Preview-API zu.
+Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-Preview-Test wird ausschließlich manuell über `workflow_dispatch` auf `main` gestartet, nachdem der Preview-Worker tatsächlich bereitgestellt wurde; Pull-Request- und normale Push-Läufe greifen nicht auf die Preview-API zu.
 
 **Produktionsschutz:** Diese Datei enthält absichtlich keinen Produktions-Worker-Namen, keine Produktions-D1-ID und keine Produktions-Secret-Werte. Ein Preview-Deployment darf niemals mit dem MCP-Worker `all-world-app` oder dessen `OAUTH_DB` verbunden werden.
