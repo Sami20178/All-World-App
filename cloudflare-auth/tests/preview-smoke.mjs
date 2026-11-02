@@ -130,15 +130,33 @@ try {
 
   console.log("PASS isolated auth preview: health, readiness, anonymous protection, registration, session restore, email login, invalid-password rejection, session rotation, logout, account deletion");
 } finally {
-  if (activeCookie && !accountDeleted) {
+  if (!accountDeleted && username && email) {
     try {
-      await call("/api/account", {
-        method: "DELETE",
-        body: { password },
-        cookie: activeCookie
-      });
+      let cleanupCookie = activeCookie;
+      if (cleanupCookie) {
+        const attempt = await call("/api/account", {
+          method: "DELETE",
+          body: { password },
+          cookie: cleanupCookie
+        });
+        if (attempt.response.ok) accountDeleted = true;
+      }
+      if (!accountDeleted) {
+        const cleanupLogin = await call("/api/auth/login", {
+          method: "POST",
+          body: { username: email, password }
+        });
+        cleanupCookie = sessionCookie(cleanupLogin.response);
+        if (cleanupLogin.response.ok && cleanupCookie) {
+          await call("/api/account", {
+            method: "DELETE",
+            body: { password },
+            cookie: cleanupCookie
+          });
+        }
+      }
     } catch {
-      // Cleanup is best-effort; no production account or database is involved.
+      // Cleanup is best-effort; only synthetic data in the isolated preview DB is involved.
     }
   }
 }
