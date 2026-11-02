@@ -89,7 +89,14 @@ Die Preview ist bewusst ein eigener Worker und eine eigene D1-Datenbank. Sie ver
 
 Die Konfiguration liegt in [`wrangler.preview.jsonc`](./wrangler.preview.jsonc). Sie enthält ausschließlich die Preview-D1-Bindung. `RATE_LIMIT_SECRET` wird als Cloudflare-Secret-Binding gesetzt; sein Wert gehört weder in Git noch in Logs. `OAUTH_PROVIDERS_JSON` bleibt ungesetzt, solange kein Anbieter vollständig eingerichtet und getestet wurde.
 
-### Preview bereitstellen
+### Aktueller Preview-Status (02.11.2026)
+
+- Die isolierte EU-D1-Datenbank wurde angelegt: `all-world-auth-preview` (`79a0bdac-004d-4fde-becf-d9beb1fc31e5`).
+- Der Preview-Worker `all-world-auth-api-preview` wurde in diesem Durchlauf **nicht** bereitgestellt. Die Worker-Liste bestätigt, dass der Script-Name noch nicht existiert.
+- Deshalb sind Preview-URL, Schema-Initialisierung und Live-E2E noch **nicht bestätigt**. Der manuelle Smoke-Job bleibt absichtlich deaktiviert, bis der Worker und sein eigenes `RATE_LIMIT_SECRET`-Binding tatsächlich bereitstehen.
+- Die Produktionsressourcen `all-world-auth-api` und `all-world-auth` wurden nicht verändert. Das Produktions-Frontend bleibt unverändert verbunden.
+
+## Preview bereitstellen
 
 1. Das Worker-Skript aus diesem Verzeichnis mit der Preview-Konfiguration bereitstellen:
    `npx wrangler@4 deploy --config cloudflare-auth/wrangler.preview.jsonc`
