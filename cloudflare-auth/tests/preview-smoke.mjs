@@ -66,7 +66,7 @@ try {
     body: { username, email, password }
   });
   if (registered.response.status !== 201 || registered.data.user?.email !== email) {
-    throw new Error("Preview registration failed with HTTP " + registered.response.status);
+    throw new Error("Preview registration failed with HTTP " + registered.response.status + ": " + JSON.stringify(registered.data).slice(0, 400));
   }
   activeCookie = sessionCookie(registered.response);
   if (!activeCookie) throw new Error("Registration did not set the session cookie");

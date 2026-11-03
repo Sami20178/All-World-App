@@ -121,6 +121,11 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 
 ### Korrektur nach erstem Preview-Lauf – 03.11.2026
 
+- Nach dem zweiten Lauf war der HTTPS-Health-/Readiness-Aufruf erfolgreich, die Registrierung antwortete jedoch mit HTTP 500. Der Test hat keine erfolgreiche Registrierung bestätigt.
+- Für den Preview-Worker wurde danach Cloudflare-Observability aktiviert: Logs und Invocation-Logs mit 100-%-Sampling, Real-time Issues aktiviert und Query-Strings in Logs/Traces redigiert. Diese Einstellung gilt nur für `all-world-auth-api-preview`.
+- Der Worker protokolliert im Fehlerpfad ausschließlich Methode, Pfad, interne Stage und Fehlertext/Stack; Request-Bodies, Passwörter und Session-Cookies werden dort nicht protokolliert. Die nächste Preview-Ausführung soll die Ursache anhand dieser Logs eingrenzen.
+- `preview-smoke.mjs` gibt bei fehlgeschlagener Registrierung jetzt zusätzlich den begrenzten, nicht geheimen JSON-Fehlertext aus. Das erleichtert die Diagnose, ohne Zugangsdaten zu protokollieren.
+
 - Der erste GitHub-Preview-Smoke-Lauf [#41701236174](https://github.com/Sami20178/All-World-App/actions/runs/41701236174) bestand die lokale Worker-Validierung, scheiterte aber beim ersten HTTPS-Health-Aufruf. Die anschließende Cloudflare-Prüfung zeigte als Ursache: Das workers.dev-Subdomain-Flag des Preview-Skripts war deaktiviert (`enabled=false`).
 - Ausschließlich für `all-world-auth-api-preview` wurde das Subdomain-Flag auf `enabled=true` gesetzt; `previews_enabled=false` blieb erhalten. Der anschließende GET-Read-back bestätigte genau diese Werte. Der Produktions-Worker wurde nicht geändert.
 - Das separate Preview-Secret `RATE_LIMIT_SECRET` ist als `secret_text` vorhanden. Der Wert wurde nicht gelesen, nicht protokolliert und nicht in Git gespeichert.
