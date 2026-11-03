@@ -38,12 +38,18 @@ let accountDeleted = false;
 try {
   const health = await call("/api/health");
   if (!health.response.ok || health.data.ok !== true || health.data.service !== "all-world-auth-api") {
-    throw new Error("Preview health check failed");
+    throw new Error(
+      "Preview health check failed (HTTP " + health.response.status + "): " +
+      JSON.stringify(health.data).slice(0, 400)
+    );
   }
 
   const ready = await call("/api/ready");
   if (!ready.response.ok || ready.data.ok !== true || ready.data.ready !== true) {
-    throw new Error("Preview readiness check failed");
+    throw new Error(
+      "Preview readiness check failed (HTTP " + ready.response.status + "): " +
+      JSON.stringify(ready.data).slice(0, 400)
+    );
   }
 
   const id = randomUUID().replace(/-/g, "").slice(0, 12);

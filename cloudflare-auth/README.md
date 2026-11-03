@@ -119,6 +119,13 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 - Das eigene `RATE_LIMIT_SECRET` wurde ausschließlich am Preview-Worker gesetzt. Produktions-Secret, Produktions-Worker und MCP-Worker wurden nicht verändert.
 - Eine schreibgeschützte D1-Abfrage vor dem ersten Health-Aufruf zeigte nur die interne Tabelle `_cf_KV`; die Anwendungstabellen waren noch nicht initialisiert. Der Worker führt `CREATE TABLE IF NOT EXISTS` beim ersten Health-/API-Aufruf aus. Es wurde kein SQL-Reset und keine Datenlöschung ausgeführt.
 
+### Korrektur nach erstem Preview-Lauf – 03.11.2026
+
+- Der erste GitHub-Preview-Smoke-Lauf [#41701236174](https://github.com/Sami20178/All-World-App/actions/runs/41701236174) bestand die lokale Worker-Validierung, scheiterte aber beim ersten HTTPS-Health-Aufruf. Die anschließende Cloudflare-Prüfung zeigte als Ursache: Das workers.dev-Subdomain-Flag des Preview-Skripts war deaktiviert (`enabled=false`).
+- Ausschließlich für `all-world-auth-api-preview` wurde das Subdomain-Flag auf `enabled=true` gesetzt; `previews_enabled=false` blieb erhalten. Der anschließende GET-Read-back bestätigte genau diese Werte. Der Produktions-Worker wurde nicht geändert.
+- Das separate Preview-Secret `RATE_LIMIT_SECRET` ist als `secret_text` vorhanden. Der Wert wurde nicht gelesen, nicht protokolliert und nicht in Git gespeichert.
+- Der nächste Smoke-Lauf muss nach dieser Korrektur erneut bestätigen, dass Health/Readiness, Schema-Initialisierung und die synthetischen Account-Tests funktionieren. Bis dahin ist die Preview **konfiguriert, aber nicht E2E-bestätigt**.
+
 ### Nächster End-to-End-Test
 
 - `cloudflare-auth/tests/preview-smoke.mjs` prüft Health, Readiness, anonyme Zugriffssperre, synthetische Registrierung, E-Mail-Login, Session-Wiederherstellung und -Rotation, falsches Passwort, Logout und Kontolöschung.
