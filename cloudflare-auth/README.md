@@ -174,3 +174,12 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 - PRs [#17](https://github.com/Sami20178/All-World-App/pull/17) und [#18](https://github.com/Sami20178/All-World-App/pull/18) sind beide Drafts und zeigen aktuell denselben Head-Commit `dec0ad1`; sie sind nicht gemergt. Die Branch-Bezeichnung `scrypt-kdf` beschreibt den derzeitigen PBKDF2-Code nicht korrekt.
 - E-Mail-Verifizierung, Passwortzurücksetzung und externe OAuth-Anbieter bleiben unimplementiert bzw. nicht konfiguriert. Kein E-Mail-Versanddienst und keine Provider-Konfiguration sind bestätigt; Provider-Discovery in Produktion meldet 0 Anbieter.
 
+### Nachtest nach dem Preview-KDF-Deployment – 03.11.2026, 20:43 CET
+
+- Nach dem Deployment der Version `00362d75-79ff-4e4a-affa-66ae8d73a3f9` lief [Cloudflare Auth Worker validation #41705723031](https://github.com/Sami20178/All-World-App/actions/runs/41705723031) auf Main erfolgreich durch. Sowohl `validate` als auch `preview-smoke` endeten mit `success`.
+- Der Smoke-Log bestätigt: Health, Readiness, anonyme Zugriffssperre, Registrierung, Session-Wiederherstellung, E-Mail-Login, Ablehnung eines falschen Passworts, Session-Rotation, Logout und Kontolöschung.
+- Der Test prüft außerdem CORS für den isolierten Test-Origin sowie die Cookie-Attribute `HttpOnly`, `Secure` und `SameSite=None`. Er verwendet ein synthetisches `example.test`-Konto und löscht es am Ende.
+- Die anschließende schreibgeschützte D1-Zählabfrage bestätigte 0 Benutzer, 0 Sitzungen und 0 OAuth-Identitäten. Es blieben keine Testkonten zurück.
+- Die separaten Main-Läufe [API CI #41705722877](https://github.com/Sami20178/All-World-App/actions/runs/41705722877), [Node server validation #41705722652](https://github.com/Sami20178/All-World-App/actions/runs/41705722652) und [Cloudflare API/OAuth health smoke #41705723094](https://github.com/Sami20178/All-World-App/actions/runs/41705723094) waren ebenfalls erfolgreich.
+- **Grenze:** Dies ist ein erfolgreicher isolierter Preview-HTTP-End-to-End-Test, kein Browser-Test auf einem echten Gerät und keine Produktionsfreigabe. Die KDF-Sicherheitsgrenze (100.000 PBKDF2-SHA-512-Iterationen unter OWASP-Empfehlung), fehlende E-Mail-Verifizierung/Passwortzurücksetzung und 0 konfigurierte OAuth-Provider bleiben bestehen. Produktion wurde nicht verändert.
+
