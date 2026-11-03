@@ -108,3 +108,11 @@ Die Konfiguration liegt in [`wrangler.preview.jsonc`](./wrangler.preview.jsonc).
 Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-Preview-Test wird ausschließlich manuell über `workflow_dispatch` auf `main` gestartet, nachdem der Preview-Worker tatsächlich bereitgestellt wurde; Pull-Request- und normale Push-Läufe greifen nicht auf die Preview-API zu.
 
 **Produktionsschutz:** Diese Datei enthält absichtlich keinen Produktions-Worker-Namen, keine Produktions-D1-ID und keine Produktions-Secret-Werte. Ein Preview-Deployment darf niemals mit dem MCP-Worker `all-world-app` oder dessen `OAUTH_DB` verbunden werden.
+
+
+## Preview-Worker-Staging – 2026-11-03
+
+- Der isolierte Worker `all-world-auth-api-preview` wurde aus dem Server-Main-Code hochgeladen. Cloudflare meldete Deployment-ID `779ce21a1ac243c9863eb07e76e723d1` am 03.11.2026 um 19:01:52 UTC.
+- Bindings: D1 `AUTH_DB` zeigt ausschließlich auf `all-world-auth-preview` (`79a0bdac-004d-4fde-becf-d9beb1fc31e5`); `APP_ORIGIN` ist `https://auth-preview.invalid`; `API_PUBLIC_URL` ist die dedizierte Preview-Adresse. Die D1-Datenbank hatte bei der read-only-Prüfung null Anwendungstabellen.
+- workers.dev ist deaktiviert und `previews_enabled=false`. Das erforderliche Secret-Binding `RATE_LIMIT_SECRET` konnte über die aktuelle Cloudflare-Integration nicht angelegt werden. Deshalb den Subdomain-Zugriff nicht aktivieren und keinen Live-Smoke ausführen, bis das Secret sicher gesetzt und anschließend nur der Preview-Worker geprüft wurde.
+- Der Produktions-Worker `all-world-auth-api`, die Produktions-D1 und die produktive Domain wurden nicht verändert. GitHub-CI für PR #16 und der Main-Merge liefen erfolgreich; der Preview-Live-Test bleibt offen.

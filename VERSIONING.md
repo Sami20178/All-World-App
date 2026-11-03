@@ -141,3 +141,13 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Team-Server-Main steht auf `9c0653484273d55a9f4f593e82b021d057d20386`; die relevanten Server-/Worker-/Konfigurationsdateien stimmen mit dem Upstream überein. Die vier Team-Server-Workflows nach dem Merge waren erfolgreich.
 - Der Cloudflare-Auth-Worker wurde nach PR #14 nicht neu deployed. Aktives Deployment bleibt `48823a4b-9ffd-47ff-be23-6070cc853fdf`, Version `91b33834-5905-4c5f-855b-35c6fd5339ad` vom 31.10.2026. Der gemergte Code ist CI-geprüft, aber nicht als produktiv live bestätigt.
 - Kein neues Server-Release und kein Versions-Tag wurde erstellt. Die nächste gemeinsame unvergebene App-Version bleibt `First Classic 0.0.0.0`; die APK-Pflicht und alle Geräte-/Release-Gates bleiben unverändert.
+
+
+## Release-Gate-Nachprüfung 2026-11-03, 20:01 CET
+
+- Frontend-Releases und Tag-Referenzen sind leer. Im Server existiert nur die Legacy-Release `All World` / Tag `All-World` mit dem alten Splash-APK-Asset. Keine Version aus dem verbindlichen Schema wurde vergeben.
+- Nächster gemeinsamer Kandidat bleibt **First Classic 0.0.0.0**. Kein neues Tag und kein App-Release erstellt.
+- Android-Build [#41695790568](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41695790568) erfolgreich; Debug-Artefakt-ID `13260417885`, 32.462 Byte. Signatur-/Integritäts- und Web-Asset-Prüfungen bestanden, aber keine physische Android-/Fire-OS-Installation. Kein Release-Asset.
+- Team-Android-Build [#41698362970](https://github.com/World-Team/All-World-App-Source-Code-Team-repo/actions/runs/41698362970) erfolgreich; Debug-Artefakt-ID `13262432673`, 32.466 Byte. Kein physischer Gerätetest.
+- Web-Deploy [#41695790678](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41695790678) einschließlich HTTPS-Live-Verify erfolgreich; dies ist kein App-Release.
+- Release-Gate bleibt geschlossen, bis echte Geräteinstallation und Kernfunktionstests erfolgt sind. Fire OS und native Desktop-/iOS-/Konsolen-Plattformen sind nicht getestet.
