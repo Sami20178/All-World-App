@@ -624,6 +624,9 @@ async function handle(request, env) {
       if (String(env.RATE_LIMIT_SECRET || "").length < 32) {
         return json(request, env, { ok: false, ready: false, error: "Rate-Limit-Geheimnis ist nicht sicher konfiguriert." }, 503);
       }
+      if (!passwordPepperConfigured(env)) {
+        return json(request, env, { ok: false, ready: false, error: "Passwortschutz ist nicht sicher konfiguriert." }, 503);
+      }
       await ensureSchema(env.AUTH_DB);
       await env.AUTH_DB.prepare("SELECT 1 AS ok").first();
       return json(request, env, { ok: true, ready: true, service: "all-world-auth-api" });
@@ -639,6 +642,9 @@ async function handle(request, env) {
 
   if (String(env.RATE_LIMIT_SECRET || "").length < 32) {
     return json(request, env, { error: "Rate-Limit-Geheimnis ist nicht sicher konfiguriert." }, 503);
+  }
+  if (!passwordPepperConfigured(env)) {
+    return json(request, env, { error: "Passwortschutz ist nicht sicher konfiguriert." }, 503);
   }
 
   try {

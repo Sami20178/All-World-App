@@ -29,6 +29,13 @@ class FakeD1 {
 
 const ORIGIN = "https://app.example.test";
 function env(overrides = {}) { return { AUTH_DB: new FakeD1(), APP_ORIGIN: ORIGIN, RATE_LIMIT_SECRET: "test-only-rate-limit-secret-32-bytes", PASSWORD_PEPPER: "test-only-password-pepper-32-bytes", ...overrides }; }
+
+test("Cloudflare auth Worker readiness fails closed without a password pepper", async () => {
+  const bindings = env({ PASSWORD_PEPPER: "" });
+  const response = await worker.fetch(request("/api/ready"), bindings);
+  assert.equal(response.status, 503);
+  assert.equal((await body(response)).ready, false);
+});
 function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!headers.has("Origin")) headers.set("Origin", ORIGIN);
@@ -158,7 +165,7 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
 
   const stored = bindings.AUTH_DB.db.prepare("SELECT password_hash FROM users WHERE username_normalized=?").get("sample_user");
   assert.notEqual(stored.password_hash, password, "password must not be stored in plaintext");
-  assert.match(stored.password_hash, /^pbkdf2\$310000\$/);
+  assert.match(stored.password_hash, /^pbkdf2-sha512\$100000\$/);
 
   const me = await worker.fetch(request("/api/auth/me", { headers: { Cookie: firstCookie } }), bindings);
   assert.equal(me.status, 200);
