@@ -27,6 +27,10 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Check Worker syntax
         run: node --check cloudflare-auth/worker.mjs
+      - name: Check auth preview smoke script syntax
+        run: node --check cloudflare-auth/preview-target.mjs && node --check cloudflare-auth/tests/preview-smoke.mjs
+      - name: Test auth preview target isolation
+        run: node --test cloudflare-auth/tests/preview-target.test.mjs
       - name: Run auth Worker smoke tests
         run: node --test cloudflare-auth/tests/worker-auth.test.mjs
 

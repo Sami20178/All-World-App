@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { resolvePreviewBase } from "../preview-target.mjs";
 
-const base = (process.env.AUTH_PREVIEW_BASE_URL || "https://all-world-auth-api-preview.docc-samisoliman.workers.dev").replace(/\/$/, "");
+const base = resolvePreviewBase(process.env.AUTH_PREVIEW_BASE_URL || undefined);
 const origin = "https://auth-preview.invalid";
 const password = "Preview-only-long-password!";
 
