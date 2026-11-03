@@ -144,3 +144,33 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 - Produktions-D1 `all-world-auth` wurde nur lesend geprüft; sieben Anwendungstabellen sind vorhanden. Es wurden keine Nutzerkonten, Passwörter oder Produktionszeilen verändert.
 - `OAUTH_PROVIDERS_JSON` ist nicht konfiguriert; Provider-Discovery meldete zuletzt null aktive Anbieter. E-Mail-Versand, E-Mail-Verifizierung und Passwortzurücksetzung bleiben offen.
 - Google, Apple, Microsoft, GitHub und Roblox sind nicht als live aktiviert bestätigt. Supercell bleibt ausgeschlossen.
+
+## Verifizierte Preview-Nachprüfung – 03.11.2026, 20:36 CET
+
+### Aktiver isolierter Preview-Worker
+
+- Cloudflare listet `all-world-auth-api-preview` mit aktivem Deployment `7e27bbe2-b0e8-4aba-afbc-7d51f36fef11`, Version `00362d75-79ff-4e4a-affa-66ae8d73a3f9`, 100 % Traffic. Der Worker wurde am 03.11.2026 um 19:36:40 UTC bereitgestellt.
+- Die Deployment-Metadaten ordnen die Version PR [#18](https://github.com/Sami20178/All-World-App/pull/18), Commit `dec0ad1b214379b7443337185ecc177fc9009c88`, zu.
+- Die Bindings wurden ausschließlich nach Namen und Typ gelesen: `API_PUBLIC_URL`, `APP_ORIGIN` (`https://auth-preview.invalid`), `AUTH_DB` (die separate EU-D1 `all-world-auth-preview`), `PASSWORD_PEPPER` und `RATE_LIMIT_SECRET`. Beide Secret-Bindings sind vorhanden; ihre Werte wurden nicht gelesen.
+- Die Preview-Subdomain ist aktiviert; `previews_enabled=false` bleibt gesetzt. Produktions-Worker, Produktions-D1, MCP-Worker und DNS wurden nicht verändert.
+- Eine schreibgeschützte D1-Abfrage bestätigte sieben Anwendungstabellen plus die interne Tabelle `_cf_KV`. Die geprüften Zähler waren 0 Benutzer, 0 Sitzungen und 0 OAuth-Identitäten; die Abfrage schrieb keine Zeilen.
+
+### Passwort-KDF: klare Freigabegrenze
+
+- Der PR-#18-Kandidat verwendet PBKDF2-HMAC-SHA-512 mit 100.000 Iterationen, zufälligem 16-Byte-Salt, 64-Byte-Ergebnis und einem separaten serverseitigen `PASSWORD_PEPPER`.
+- Das behebt die beobachtete Workers-WebCrypto-Grenze von maximal 100.000 PBKDF2-Iterationen, erfüllt aber nicht die aktuelle OWASP-Mindestempfehlung von 220.000 Iterationen für PBKDF2-HMAC-SHA-512. Ein Pepper ersetzt keine ausreichende KDF-Arbeitsstufe.
+- Deshalb bleibt der Kandidat ausschließlich Preview-Code und ist **nicht für Produktion freigegeben**. Vor einer Produktionsentscheidung muss eine auf dem tatsächlichen Worker gemessene Argon2id-/scrypt-Variante oder ein geeigneter gehosteter Auth-Dienst bewertet werden.
+- Add-on-Prüfung: [`paulmillr/noble-hashes`](https://github.com/paulmillr/noble-hashes) ist MIT-lizenziert, hat keine Laufzeit-Abhängigkeiten und veröffentlichte Version 2.4.0 am 27.08.2026. Das README warnt jedoch, dass die JavaScript-Argon2-Implementierung langsam ist und Argon2 dort nicht vom ursprünglichen Audit abgedeckt wurde; daher nicht ungeprüft übernehmen. [`7Hazard/cf-hash-wasm`](https://github.com/7Hazard/cf-hash-wasm) ist ein Cloudflare-WASM-Fork, aber seit 16.01.2021 unverändert, ohne Releases und mit nicht eindeutig erkannter Lizenz (`NOASSERTION)); daher nicht übernehmen.
+- Maßgebliche Vorgaben: [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Cloudflare dokumentiert die Worker-CPU- und Speichergrenzen in den [Workers Limits](https://developers.cloudflare.com/workers/platform/limits/).
+
+### E2E-Nachweis
+
+- Der Main-Workflow [#41702164242](https://github.com/Sami20178/All-World-App/actions/runs/41702164242) hatte einen erfolgreichen `preview-smoke`-Job. Er wurde jedoch am 03.11.2026 um 19:19:18 UTC abgeschlossen und liegt damit **vor** dem oben genannten Preview-Deployment um 19:36:40 UTC.
+- Dieser frühere Erfolg bestätigt daher nicht den jetzt aktiven PR-#18-Code. Nach dem Preview-Deployment ist noch ein neuer Smoke-Lauf erforderlich, der Health, Readiness, anonyme Zugriffssperre, Registrierung, E-Mail-Login, Session-Wiederherstellung/-Rotation, falsches Passwort, Logout und Löschung eines synthetischen Kontos gegen genau diese aktive Version prüft.
+- Die Produktions-API bleibt auf dem bestehenden Worker `all-world-auth-api` mit Deployment `48823a4b-9ffd-47ff-be23-6070cc853fdf` und Version `91b33834-5905-4c5f-855b-35c6fd5339ad`. Der Preview-Kandidat wurde nicht auf Produktion ausgerollt.
+
+### Weiter offen
+
+- PRs [#17](https://github.com/Sami20178/All-World-App/pull/17) und [#18](https://github.com/Sami20178/All-World-App/pull/18) sind beide Drafts und zeigen aktuell denselben Head-Commit `dec0ad1`; sie sind nicht gemergt. Die Branch-Bezeichnung `scrypt-kdf` beschreibt den derzeitigen PBKDF2-Code nicht korrekt.
+- E-Mail-Verifizierung, Passwortzurücksetzung und externe OAuth-Anbieter bleiben unimplementiert bzw. nicht konfiguriert. Kein E-Mail-Versanddienst und keine Provider-Konfiguration sind bestätigt; Provider-Discovery in Produktion meldet 0 Anbieter.
+
