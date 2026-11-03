@@ -110,9 +110,25 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 **Produktionsschutz:** Diese Datei enthält absichtlich keinen Produktions-Worker-Namen, keine Produktions-D1-ID und keine Produktions-Secret-Werte. Ein Preview-Deployment darf niemals mit dem MCP-Worker `all-world-app` oder dessen `OAUTH_DB` verbunden werden.
 
 
-## Preview-Worker-Staging – 2026-11-03
+## Preview-Worker-Staging – 2026-11-03 (Nachprüfung)
 
-- Der isolierte Worker `all-world-auth-api-preview` wurde aus dem Server-Main-Code hochgeladen. Cloudflare meldete Deployment-ID `779ce21a1ac243c9863eb07e76e723d1` am 03.11.2026 um 19:01:52 UTC.
-- Bindings: D1 `AUTH_DB` zeigt ausschließlich auf `all-world-auth-preview` (`79a0bdac-004d-4fde-becf-d9beb1fc31e5`); `APP_ORIGIN` ist `https://auth-preview.invalid`; `API_PUBLIC_URL` ist die dedizierte Preview-Adresse. Die D1-Datenbank hatte bei der read-only-Prüfung null Anwendungstabellen.
-- workers.dev ist deaktiviert und `previews_enabled=false`. Das erforderliche Secret-Binding `RATE_LIMIT_SECRET` konnte über die aktuelle Cloudflare-Integration nicht angelegt werden. Deshalb den Subdomain-Zugriff nicht aktivieren und keinen Live-Smoke ausführen, bis das Secret sicher gesetzt und anschließend nur der Preview-Worker geprüft wurde.
-- Der Produktions-Worker `all-world-auth-api`, die Produktions-D1 und die produktive Domain wurden nicht verändert. GitHub-CI für PR #16 und der Main-Merge liefen erfolgreich; der Preview-Live-Test bleibt offen.
+### Cloudflare-Konfiguration – tatsächlich geprüft
+
+- Der isolierte Worker `all-world-auth-api-preview` ist vorhanden. Die aktuelle Cloudflare-Deployment-Liste meldet Deployment `b43e809b-7ee0-4300-bf69-8422190d6132`, Version `0461dcc0-caab-4b9a-9a8f-a3f9e839b12d`, mit 100 % Traffic.
+- Die Preview-Bindings wurden nach Namen und Typ geprüft: `API_PUBLIC_URL`, `APP_ORIGIN`, `AUTH_DB` (D1 `all-world-auth-preview`) und `RATE_LIMIT_SECRET` (Secret Text). Der Secret-Wert wurde nicht gelesen oder dokumentiert.
+- Das eigene `RATE_LIMIT_SECRET` wurde ausschließlich am Preview-Worker gesetzt. Produktions-Secret, Produktions-Worker und MCP-Worker wurden nicht verändert.
+- Eine schreibgeschützte D1-Abfrage vor dem ersten Health-Aufruf zeigte nur die interne Tabelle `_cf_KV`; die Anwendungstabellen waren noch nicht initialisiert. Der Worker führt `CREATE TABLE IF NOT EXISTS` beim ersten Health-/API-Aufruf aus. Es wurde kein SQL-Reset und keine Datenlöschung ausgeführt.
+
+### Nächster End-to-End-Test
+
+- `cloudflare-auth/tests/preview-smoke.mjs` prüft Health, Readiness, anonyme Zugriffssperre, synthetische Registrierung, E-Mail-Login, Session-Wiederherstellung und -Rotation, falsches Passwort, Logout und Kontolöschung.
+- Der Test verwendet ausschließlich `example.test`-Daten und löscht das synthetische Konto am Ende. Er ist noch **nicht** als erfolgreich ausgeführt bestätigt.
+- Die GitHub-Actions-Verbindung stellt keinen Workflow-Dispatch-Aufruf bereit. Deshalb wird `cloudflare-auth-ci.yml` so angepasst, dass der Preview-Smoke nach erfolgreicher Validierung auch bei einem Main-Push mit Änderungen unter `cloudflare-auth/**` ausgeführt wird; manuelles `workflow_dispatch` bleibt möglich. Pull-Request-Läufe greifen nicht auf die Preview-API zu.
+- Direkte HTTP-Abrufe aus der aktuellen Ausführungsumgebung scheiterten an DNS-Auflösung. Der maßgebliche E2E-Nachweis muss daher aus dem GitHub-Runner stammen.
+
+### Produktion bleibt getrennt
+
+- Produktions-Worker `all-world-auth-api`: Deployment `48823a4b-9ffd-47ff-be23-6070cc853fdf`, Version `91b33834-5905-4c5f-855b-35c6fd5339ad`, 100 % Traffic. Dieser Worker wurde in diesem Durchlauf nicht verändert.
+- Produktions-D1 `all-world-auth` wurde nur lesend geprüft; sieben Anwendungstabellen sind vorhanden. Es wurden keine Nutzerkonten, Passwörter oder Produktionszeilen verändert.
+- `OAUTH_PROVIDERS_JSON` ist nicht konfiguriert; Provider-Discovery meldete zuletzt null aktive Anbieter. E-Mail-Versand, E-Mail-Verifizierung und Passwortzurücksetzung bleiben offen.
+- Google, Apple, Microsoft, GitHub und Roblox sind nicht als live aktiviert bestätigt. Supercell bleibt ausgeschlossen.
