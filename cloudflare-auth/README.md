@@ -144,3 +144,13 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 - Produktions-D1 `all-world-auth` wurde nur lesend geprüft; sieben Anwendungstabellen sind vorhanden. Es wurden keine Nutzerkonten, Passwörter oder Produktionszeilen verändert.
 - `OAUTH_PROVIDERS_JSON` ist nicht konfiguriert; Provider-Discovery meldete zuletzt null aktive Anbieter. E-Mail-Versand, E-Mail-Verifizierung und Passwortzurücksetzung bleiben offen.
 - Google, Apple, Microsoft, GitHub und Roblox sind nicht als live aktiviert bestätigt. Supercell bleibt ausgeschlossen.
+
+
+## Passwort-KDF und Cloudflare-WebCrypto-Limit – 03.11.2026
+
+- Der bisherige Worker verwendete PBKDF2-HMAC-SHA-256 mit 310.000 Iterationen. Ein echter Preview-Aufruf lieferte den Runtime-Fehler `iteration counts above 100000 are not supported`; dadurch antwortete die Registrierung mit HTTP 500. Das ist ein bestätigter Plattformfehler, kein erfolgreicher Auth-Test.
+- Der isolierte Kandidat verwendet deshalb vorläufig PBKDF2-HMAC-SHA-512 mit genau 100.000 Iterationen, 16 Byte Zufallssalt und 64 Byte Ergebnis. Vor PBKDF2 wird das Passwort mit HMAC-SHA-512 und einem separaten, nur serverseitig gespeicherten `PASSWORD_PEPPER` verarbeitet. Die Parameter werden beim Verifizieren fest begrenzt; alte/andere Hash-Formate werden fail-closed abgelehnt.
+- **Sicherheitsgrenze:** 100.000 SHA-512-Iterationen liegen unter der aktuellen OWASP-Empfehlung von 220.000. Diese Änderung ist ein Runtime-Kompatibilitäts-Fallback für den isolierten Preview-Worker und darf nicht als endgültige Produktionsfreigabe gelten. Vor Produktion ist ein stärkerer, auf Workers tatsächlich benchmarkter KDF oder ein gehosteter Auth-Dienst erforderlich. Die Produktion wird in diesem Branch nicht geändert.
+- Eine schreibgeschützte Zählabfrage am Produktions-D1 ergab 0 Benutzer, 0 Sitzungen und 0 OAuth-Identitäten; daher sind in dieser Datenbank keine vorhandenen Passwort-Hashes zu migrieren. Das ist kein Nachweis über die separate Node-Server-Datenbank.
+- Add-on-Prüfung: [@noble/hashes 2.4.0](https://github.com/paulmillr/noble-hashes) ist MIT-lizenziert, hat keine Laufzeit-Abhängigkeiten und unterstützt Cloudflare Workers. Seine Scrypt-/Argon2-JS-Implementierung wird vorerst nicht eingebaut, weil ihre CPU-/Speicherkosten auf diesem Worker noch nicht gemessen wurden. Kein fremder Code wurde in diesem Branch kopiert.
+- Erforderliches Preview-Secret: `PASSWORD_PEPPER` (mindestens 32 Zeichen, getrennt von `RATE_LIMIT_SECRET`). Der Secret-Wert darf weder in Git noch in Logs oder Dokumentation stehen.

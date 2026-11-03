@@ -1,10 +1,12 @@
 const COOKIE_NAME = "allworld.sid";
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 const RATE_WINDOW = 15 * 60 * 1000;
-const PBKDF2_ITERATIONS = 310000;
+const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_HASH = "SHA-512";
+const PBKDF2_BITS = 512;
 const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,32}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const DUMMY_HASH = "pbkdf2$310000$YWFhYWFhYWFhYWFhYWFhYQ$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const DUMMY_HASH = "pbkdf2-sha512$100000$YWFhYWFhYWFhYWFhYWFhYQ$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, username_normalized TEXT NOT NULL UNIQUE, email TEXT, email_normalized TEXT, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)",
@@ -145,16 +147,34 @@ function publicUser(row) {
   };
 }
 
-async function hashPassword(password) {
+function passwordPepperConfigured(env) {
+  return String(env.PASSWORD_PEPPER || "").length >= 32;
+}
+
+async function passwordKeyMaterial(password, env) {
+  const pepper = String(env.PASSWORD_PEPPER || "");
+  if (pepper.length < 32) throw new Error("PASSWORD_PEPPER missing");
+  const pepperKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(pepper),
+    { name: "HMAC", hash: "SHA-512" },
+    false,
+    ["sign"]
+  );
+  return new Uint8Array(await crypto.subtle.sign("HMAC", pepperKey, new TextEncoder().encode(password)));
+}
+
+async function hashPassword(password, env) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const keyMaterial = await passwordKeyMaterial(password, env);
+  const key = await crypto.subtle.importKey("raw", keyMaterial, "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({
     name: "PBKDF2",
     salt,
     iterations: PBKDF2_ITERATIONS,
-    hash: "SHA-256"
-  }, key, 256);
-  return "pbkdf2$" + PBKDF2_ITERATIONS + "$" + b64url(salt) + "$" + b64url(new Uint8Array(bits));
+    hash: PBKDF2_HASH
+  }, key, PBKDF2_BITS);
+  return "pbkdf2-sha512$" + PBKDF2_ITERATIONS + "$" + b64url(salt) + "$" + b64url(new Uint8Array(bits));
 }
 
 function constantTimeEqual(left, right) {
@@ -166,11 +186,11 @@ function constantTimeEqual(left, right) {
   return difference === 0;
 }
 
-async function verifyPassword(password, stored) {
+async function verifyPassword(password, stored, env) {
   const parts = String(stored || "").split("$");
-  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  if (parts.length !== 4 || parts[0] !== "pbkdf2-sha512") return false;
   const iterations = Number(parts[1]);
-  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 600000) return false;
+  if (iterations !== PBKDF2_ITERATIONS) return false;
   let salt;
   let expected;
   try {
@@ -179,14 +199,15 @@ async function verifyPassword(password, stored) {
   } catch {
     return false;
   }
-  if (salt.length < 16 || expected.length !== 32) return false;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  if (salt.length !== 16 || expected.length !== PBKDF2_BITS / 8) return false;
+  const keyMaterial = await passwordKeyMaterial(password, env);
+  const key = await crypto.subtle.importKey("raw", keyMaterial, "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({
     name: "PBKDF2",
     salt,
     iterations,
-    hash: "SHA-256"
-  }, key, 256);
+    hash: PBKDF2_HASH
+  }, key, PBKDF2_BITS);
   return constantTimeEqual(new Uint8Array(bits), expected);
 }
 
@@ -558,7 +579,7 @@ async function handleOAuthCallback(request, env, db, slug) {
         username_normalized: username.toLowerCase(),
         email: email || null,
         email_normalized: email ? email.toLowerCase() : null,
-        password_hash: await hashPassword(randomToken(48)),
+        password_hash: await hashPassword(randomToken(48), env),
         created_at: new Date().toISOString()
       };
       await db.prepare("INSERT INTO users(id,username,username_normalized,email,email_normalized,password_hash,created_at) VALUES(?,?,?,?,?,?,?)")
@@ -673,7 +694,7 @@ async function handle(request, env) {
         username_normalized: username.toLowerCase(),
         email: email || null,
         email_normalized: emailNormalized,
-        password_hash: await hashPassword(password),
+        password_hash: await hashPassword(password, env),
         created_at: new Date().toISOString()
       };
       authStage = "register.database_insert";
@@ -718,7 +739,7 @@ async function handle(request, env) {
         "SELECT id,username,username_normalized,email,email_normalized,password_hash,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
       ).bind(normalized, normalized).first();
       authStage = "login.password_verify";
-      const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
+      const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH, env);
       if (!user || !passwordOk) return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
       await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
@@ -766,7 +787,7 @@ async function handle(request, env) {
       }
       const target = await db.prepare("SELECT id,username,email,password_hash,created_at FROM users WHERE username_normalized=?")
         .bind(username.toLowerCase()).first();
-      const passwordOk = await verifyPassword(password, target ? target.password_hash : DUMMY_HASH);
+      const passwordOk = await verifyPassword(password, target ? target.password_hash : DUMMY_HASH, env);
       if (!target || !passwordOk) return json(request, env, { error: "Kontodaten stimmen nicht. Bestätige das andere Konto mit seinem Passwort." }, 401);
       if (target.id === required.session.user.id) return json(request, env, { error: "Dieses Konto ist bereits aktiv." }, 400);
       const now = new Date().toISOString();
@@ -868,7 +889,7 @@ async function handle(request, env) {
       try { body = await readJson(request); }
       catch { return json(request, env, { error: "Ungültiges JSON." }, 400); }
       const password = typeof body.password === "string" ? body.password : "";
-      const passwordOk = password && password.length <= 72 && await verifyPassword(password, required.session.user.password_hash);
+      const passwordOk = password && password.length <= 72 && await verifyPassword(password, required.session.user.password_hash, env);
       if (!passwordOk) return json(request, env, { error: "Gib zur Bestätigung dein aktuelles Passwort ein." }, 401);
       const userId = required.session.user.id;
       await db.prepare("DELETE FROM user_data WHERE user_id=?").bind(userId).run();

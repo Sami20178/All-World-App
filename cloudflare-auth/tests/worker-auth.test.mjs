@@ -28,7 +28,7 @@ class FakeD1 {
 }
 
 const ORIGIN = "https://app.example.test";
-function env(overrides = {}) { return { AUTH_DB: new FakeD1(), APP_ORIGIN: ORIGIN, RATE_LIMIT_SECRET: "test-only-rate-limit-secret-32-bytes", ...overrides }; }
+function env(overrides = {}) { return { AUTH_DB: new FakeD1(), APP_ORIGIN: ORIGIN, RATE_LIMIT_SECRET: "test-only-rate-limit-secret-32-bytes", PASSWORD_PEPPER: "test-only-password-pepper-32-bytes", ...overrides }; }
 function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!headers.has("Origin")) headers.set("Origin", ORIGIN);
