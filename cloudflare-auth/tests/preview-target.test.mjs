@@ -13,8 +13,12 @@ test("accepts the exact HTTPS preview origin with a trailing slash", () => {
 test("refuses the production auth Worker", () => {
   assert.throws(
     () => resolvePreviewBase("https://all-world-auth-api.docc-samisoliman.workers.dev"),
-    /dedicated preview Worker URL/
+    /target must be exactly/
   );
+});
+
+test("rejects malformed preview URLs before making any request", () => {
+  assert.throws(() => resolvePreviewBase("not a URL"), /dedicated preview Worker URL/);
 });
 
 test("refuses other hosts, HTTP, ports, credentials, paths, queries and fragments", () => {
