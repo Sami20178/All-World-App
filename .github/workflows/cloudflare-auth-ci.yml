@@ -33,6 +33,8 @@ jobs:
         run: node --test cloudflare-auth/tests/preview-target.test.mjs
       - name: Run auth Worker smoke tests
         run: node --test cloudflare-auth/tests/worker-auth.test.mjs
+      - name: Benchmark scrypt candidates (Node.js only)
+        run: node --test cloudflare-auth/tests/scrypt-benchmark.test.mjs
 
       - name: Validate isolated auth preview Wrangler configuration
         run: npx --yes wrangler@4 deploy --dry-run --config cloudflare-auth/wrangler.preview.jsonc
