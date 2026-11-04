@@ -151,3 +151,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Team-Android-Build [#41698362970](https://github.com/World-Team/All-World-App-Source-Code-Team-repo/actions/runs/41698362970) erfolgreich; Debug-Artefakt-ID `13262432673`, 32.466 Byte. Kein physischer Gerätetest.
 - Web-Deploy [#41695790678](https://github.com/Sami20178/All-World-App-Source-Code-/actions/runs/41695790678) einschließlich HTTPS-Live-Verify erfolgreich; dies ist kein App-Release.
 - Release-Gate bleibt geschlossen, bis echte Geräteinstallation und Kernfunktionstests erfolgt sind. Fire OS und native Desktop-/iOS-/Konsolen-Plattformen sind nicht getestet.
+
+## Gemeinsamer Release-Gate-Audit 2026-11-04, 19:19 CET
+
+- Server-Main: `ac20ba680826ca0df232da2c798b1bbc0335b942`; geplanter API/Auth/MCP-Smoke [#41784724713](https://github.com/Sami20178/All-World-App/actions/runs/41784724713) erfolgreich. Team-Server-Main: `92b424e74f26ea032b02ef8c6e155179347b9d58`; Team-Smoke [#41784786015](https://github.com/World-Team/All-World-App-Team-Place/actions/runs/41784786015) erfolgreich.
+- Frontend-Main: `dc2e17b8a972c99447fd0ada8751799bc9699515`; Frontend-Validierung #41708170121 und Website-Deploy/Live-Verify #41708169935 erfolgreich. Aktuelles Website-Deployment `f0b162d0-d046-45a0-b2a4-7cadb69923d7`, Version `a239ac1e-04d9-4e6a-9408-a5d671056480`, 100 % Traffic.
+- Der produktive Auth-Worker `all-world-auth-api` steht weiterhin auf Deployment `48823a4b-9ffd-47ff-be23-6070cc853fdf`, Version `91b33834-5905-4c5f-855b-35c6fd5339ad` vom 31.10.2026. Es gab in diesem Durchlauf kein Produktions-Auth-Deployment.
+- Die isolierte Preview `all-world-auth-api-preview` steht auf Deployment `7e27bbe2-b0e8-4aba-afbc-7d51f36fef11`, Version `00362d75-79ff-4e4a-affa-66ae8d73a3f9`. Preview-Smoke #41705964821 bestand Registrierung, E-Mail-Login, Session-Rotation, Logout und Kontolöschung mit synthetischen Daten. Das ist keine Produktionsfreigabe und kein echter Android-WebView-Test.
+- Frontend-App-Releases: keine. Server: nur die unveränderte Legacy-Release `All World` / Tag `All-World`. Nächste gemeinsame unvergebene Version bleibt **First Classic 0.0.0.0**. Kein Tag und kein Release erstellt.
+- Android-Debug-Artefakt #13260417885 ist kein Release-Asset; keine reale Android-/Fire-OS-Installation oder Kernfunktionstests. Release-Gate bleibt geschlossen.
