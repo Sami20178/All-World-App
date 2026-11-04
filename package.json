@@ -15,6 +15,9 @@
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down -v"
   },
+  "devDependencies": {
+    "@noble/hashes": "2.4.0"
+  },
   "engines": {
     "node": ">=20"
   },
