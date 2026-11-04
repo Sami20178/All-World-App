@@ -178,3 +178,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Frontend-Main `cdb13b58d261ff605a88fb77b080a6b6483309b1`; Frontend-Validierung #41890124759 und Site-Deploy/Live-Verify #41890125230 erfolgreich. Workflow-Version `37dc1d40-5d28-4061-8b95-0b3bc63bbc33` / Deployment `2a873b6b-05c4-49e7-bf3a-f0cb289665d2`. Cloudflare listet danach ein neueres, nicht zugeordnetes Deployment `7efaf5b0-bc9b-421d-b8ba-9b4c9928c93c` / Version `1e28771e-26cd-4b00-809b-ec1d035a4e4d` mit 100 % Traffic.
 - Android-Build #41889326038 baute und prüfte die Debug-APK, aber der Actions-Artefakt-Upload scheiterte wegen ausgeschöpfter Speicherquote. Kein herunterladbares Artefakt und kein Release-Asset; echter Android-/Fire-OS-Gerätetest fehlt.
 - Frontend-Releases und Tags leer; Server nur Legacy-Release `All World` / Tag `All-World`; Team-Repositories ohne Releases/Tags. Keine Versionsnummer vergeben. Nächster Kandidat bleibt `First Classic 0.0.0.0`.
+
+## Gemeinsame Release-Gate-Nachprüfung 2026-11-04, 20:16 CET
+
+- Frontend-Upstream-Main `6db3d01ab2d9fd54d9fe779a15d753e522b13b1f`; Frontend-Tags und Frontend-Releases leer. Website-Deploy/Live-Verify #41894081006 erfolgreich; Cloudflare-Version `eedfe2bb-c36a-441c-8df3-506e66b5cd4e` / Deployment `efeaedbd-ed70-4ea9-aafd-469378ba9d7e`, 100 % Traffic.
+- Server-Upstream-Main `71f4e00da4e0187b497dffaa3f96343ff09c2c6c`; Server-Tagliste enthält nur `All-World` und die Release `All World` mit `All-World-Splash.apk`. Diese Legacy-Release ist keine App-Version aus dem Schema.
+- Team-Server-Main `7b8dea96035bffa99485435df98e8ef74ed36295`: Team-PR #4 gemergt; isolierter Preview-Target-Guard, Preview-D1-Konfiguration und Tests vorhanden. Post-Merge-API-CI #41895838054, Node-Validierung #41895838066, read-only Smoke #41895838084 und Auth-Worker-Validierung #41895838099 erfolgreich.
+- Android-Main-Build #41894080885 bestand Gradle-, Nichtleer-, Signatur- und Asset-Prüfungen; Upload des Actions-Artefakts scheiterte wegen ausgeschöpfter GitHub-Speicherquote. Kein herunterladbares Main-Artefakt. Team-Source-Build #41894347735 stellte ein Debug-Artefakt `13354649253` bereit; kein Geräteinstallationstest.
+- Keine reale Android-/Fire-OS-Installation oder Kernfunktionstests bestätigt. Fire HD 8, Fire HD 10 und Fire Max bleiben nicht getestet; Windows, macOS, Linux, iOS/iPadOS und Konsolen haben keine neuen geprüften Builds.
+- Nächster unvergebener gemeinsamer Kandidat bleibt **First Classic 0.0.0.0**. Kein neues Tag und kein App-Release erstellt.
