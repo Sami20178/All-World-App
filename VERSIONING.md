@@ -170,3 +170,11 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Android-Build #41889326038: APK-Build, Nicht-Leere, Signatur und Web-Assets bestanden; Upload des Actions-Artefakts scheiterte wegen ausgeschöpfter GitHub-Artefakt-Speicherquote. Kein herunterladbares Artefakt aus diesem Lauf. Letzter verfügbarer Download: #41695790568 / Artefakt `13260417885`, 32.462 Byte.
 - Frontend hat keine App-Releases; Server enthält nur die Legacy-Release `All World` / Tag `All-World`. Nächste gemeinsame Version bleibt `First Classic 0.0.0.0`; kein Release/Tag erstellt und kein Geräte-Test nachgewiesen.
 - Team-Source-Main `e091a714a1385aa8f1082dcad289898fbed6c855`; PR #15 bleibt offen, Branch `e233d8a602b26913554a49b0216ced25d5f5affc`, Codex-Re-Review läuft. Team-PR-Deploy-/Live-Verify-Schritte wurden übersprungen.
+
+## Nachprüfung 04.11.2026, 19:47 CET
+
+- Server-Main `fa9c4b4db3eb8fbeb8165619ec47c8b09b6da08d`: Node-Validierung #41889753152, API-CI #41889752866 und API/Auth/MCP-Smoke #41889752801 erfolgreich.
+- Team-Server-Main `3c1c42cb17d065caa0d6512dcb98a5b2b506c5c9`: Node-Validierung #41889781445, API-CI #41889781507 und API/Auth/MCP-Smoke #41889781615 erfolgreich. Die beiden Server-Versionierungsdateien waren vor diesem Update inhaltlich identisch.
+- Frontend-Main `cdb13b58d261ff605a88fb77b080a6b6483309b1`; Frontend-Validierung #41890124759 und Site-Deploy/Live-Verify #41890125230 erfolgreich. Workflow-Version `37dc1d40-5d28-4061-8b95-0b3bc63bbc33` / Deployment `2a873b6b-05c4-49e7-bf3a-f0cb289665d2`. Cloudflare listet danach ein neueres, nicht zugeordnetes Deployment `7efaf5b0-bc9b-421d-b8ba-9b4c9928c93c` / Version `1e28771e-26cd-4b00-809b-ec1d035a4e4d` mit 100 % Traffic.
+- Android-Build #41889326038 baute und prüfte die Debug-APK, aber der Actions-Artefakt-Upload scheiterte wegen ausgeschöpfter Speicherquote. Kein herunterladbares Artefakt und kein Release-Asset; echter Android-/Fire-OS-Gerätetest fehlt.
+- Frontend-Releases und Tags leer; Server nur Legacy-Release `All World` / Tag `All-World`; Team-Repositories ohne Releases/Tags. Keine Versionsnummer vergeben. Nächster Kandidat bleibt `First Classic 0.0.0.0`.
