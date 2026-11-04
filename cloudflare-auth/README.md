@@ -183,3 +183,28 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 - Die separaten Main-Läufe [API CI #41705722877](https://github.com/Sami20178/All-World-App/actions/runs/41705722877), [Node server validation #41705722652](https://github.com/Sami20178/All-World-App/actions/runs/41705722652) und [Cloudflare API/OAuth health smoke #41705723094](https://github.com/Sami20178/All-World-App/actions/runs/41705723094) waren ebenfalls erfolgreich.
 - **Grenze:** Dies ist ein erfolgreicher isolierter Preview-HTTP-End-to-End-Test, kein Browser-Test auf einem echten Gerät und keine Produktionsfreigabe. Die KDF-Sicherheitsgrenze (100.000 PBKDF2-SHA-512-Iterationen unter OWASP-Empfehlung), fehlende E-Mail-Verifizierung/Passwortzurücksetzung und 0 konfigurierte OAuth-Provider bleiben bestehen. Produktion wurde nicht verändert.
 
+
+
+## Current production and preview status — 2026-11-04
+
+- Server main is `5075aad90d7b195cbfa1b387c84702e3d3daad9a`. Node validation [#41891608656](https://github.com/Sami20178/All-World-App/actions/runs/41891608656), API CI [#41891608663](https://github.com/Sami20178/All-World-App/actions/runs/41891608663), and read-only Cloudflare API/Auth/MCP smoke [#41891608677](https://github.com/Sami20178/All-World-App/actions/runs/41891608677) passed. The smoke verifies health/readiness/provider discovery, not a successful production account lifecycle.
+- Production Worker remains on deployment `48823a4b-9ffd-47ff-be23-6070cc853fdf`, version `91b33834-5905-4c5f-855b-35c6fd5339ad`, 100% traffic. Its visible bindings are `APP_ORIGIN`, `AUTH_DB`, and `RATE_LIMIT_SECRET`; secret values were not read. No `PASSWORD_PEPPER` or `OAUTH_PROVIDERS_JSON` binding is present.
+- Preview Worker remains isolated on deployment `7e27bbe2-b0e8-4aba-afbc-7d51f36fef11`, version `00362d75-79ff-4e4a-affa-66ae8d73a3f9`, with a separate D1 database and `PASSWORD_PEPPER` binding.
+- Read-only D1 counts in both production and preview: 0 users, 0 sessions, 0 OAuth identities, 0 OAuth states. No production rows were changed.
+- Production provider discovery reports 0 enabled OAuth providers. No transactional mail service is configured; email verification and password reset remain unavailable. Google, Apple, Microsoft, GitHub, and Roblox are not active. Supercell remains excluded.
+
+### KDF decision remains blocked
+
+- The current main Worker source uses PBKDF2-HMAC-SHA-256 with 310,000 iterations. A Cloudflare Worker runtime limit of 100,000 iterations was observed in preview diagnostics; see [Cloudflare workerd issue #1346](https://github.com/cloudflare/workerd/issues/1346). This is a compatibility risk; no destructive production registration test was performed.
+- The preview candidate uses PBKDF2-HMAC-SHA-512 with 100,000 iterations and a pepper. It passes the observed runtime limit but is below OWASP's 220,000 PBKDF2-HMAC-SHA-512 recommendation, so it is not production-approved.
+- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) currently recommends Argon2id (19 MiB, 2 iterations, parallelism 1) or scrypt; PBKDF2-HMAC-SHA-256 requires 600,000 iterations and SHA-512 220,000.
+
+### Add-on assessment
+
+| Project | Verified status | Decision |
+|---|---|---|
+| [Daninet/hash-wasm](https://github.com/Daninet/hash-wasm) 4.12.0 | MIT text in package and LICENSE; last release 2024-11-19; WASM/Argon2id/Web Worker support; no runtime dependencies; GitHub license detector says NOASSERTION. | Not integrated; maintenance freshness and independent audit need review. |
+| [paulmillr/noble-hashes](https://github.com/paulmillr/noble-hashes) 2.4.0 | MIT, updated 2026-09-08, no runtime dependencies; scrypt is in documented audit scope, Argon2 is excluded from the Cure53 audit scope. | Scrypt candidate for an isolated Worker benchmark; no integration yet. |
+| [7Hazard/cf-hash-wasm](https://github.com/7Hazard/cf-hash-wasm) | NOASSERTION license status, last commit 2021-01-16, no releases. | Do not use. |
+
+No add-on was installed or copied. Next step: benchmark a maintained scrypt/Argon2id option in an isolated Worker with CPU, memory, DoS, and Unicode tests before changing production hashing.
