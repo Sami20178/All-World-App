@@ -208,3 +208,14 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 | [7Hazard/cf-hash-wasm](https://github.com/7Hazard/cf-hash-wasm) | NOASSERTION license status, last commit 2021-01-16, no releases. | Do not use. |
 
 No add-on was installed or copied. Next step: benchmark a maintained scrypt/Argon2id option in an isolated Worker with CPU, memory, DoS, and Unicode tests before changing production hashing.
+
+## Scrypt candidate benchmark (not production authentication)
+
+A Node.js-only benchmark test evaluates two OWASP-listed scrypt parameter sets with the pinned test dependency `@noble/hashes@2.4.0`:
+
+- `N=2^16, r=8, p=2` (64 MiB working-memory target)
+- `N=2^15, r=8, p=3` (32 MiB working-memory target)
+
+The benchmark records elapsed time and the Node process RSS delta without imposing a hardware-dependent timing threshold. It also checks the RFC 7914 reference vector and that distinct Unicode passwords produce distinct derived keys. The dependency is MIT-licensed, zero-runtime-dependency, and used only by the benchmark tests; it is not imported by the authentication Worker or Node API.
+
+**Important:** passing this Node.js test does not prove Cloudflare Workers compatibility. The Worker runtime has a 128 MiB isolate memory ceiling, and its CPU allowance depends on the account plan. No scrypt code is enabled in `hashPassword`, no Worker is deployed by this change, and no production KDF approval is implied. Before adoption, the same candidate must be measured in a dedicated isolated Worker with concurrency, CPU, memory, rate-limit/DoS, Unicode, and rehash tests. The 128 MiB OWASP scrypt option is not a safe default for a Worker with a 128 MiB total isolate ceiling.
