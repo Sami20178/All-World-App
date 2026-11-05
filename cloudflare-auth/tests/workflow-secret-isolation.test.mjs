@@ -7,11 +7,14 @@ const workflow = await readFile(
 );
 
 const jobsIndex = workflow.indexOf("\njobs:\n");
+const workflowScope = workflow.slice(0, jobsIndex);
 const validateIndex = workflow.indexOf("\n  validate:\n", jobsIndex);
 const remoteIndex = workflow.indexOf("\n  remote-worker-benchmark:\n", validateIndex);
 const previewIndex = workflow.indexOf("\n  preview-smoke:\n", remoteIndex);
 
 assert.notEqual(jobsIndex, -1, "workflow must define jobs");
+assert.doesNotMatch(workflowScope, /CLOUDFLARE_API_TOKEN/,
+  "workflow-level environment must never expose the Cloudflare token to pull-request jobs");
 assert.notEqual(validateIndex, -1, "workflow must define the unprivileged validation job");
 assert.notEqual(remoteIndex, -1, "workflow must define a separate remote benchmark job");
 assert.notEqual(previewIndex, -1, "workflow must keep the preview smoke job separate");
