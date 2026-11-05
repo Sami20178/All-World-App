@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { scryptAsync } from "@noble/hashes/scrypt.js";
+import benchmarkWorker from "../scrypt-benchmark-worker.mjs";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 
 const salt = Uint8Array.from({ length: 16 }, (_, index) => index);
@@ -64,3 +65,18 @@ for (const candidate of [
     );
   });
 }
+
+test("rejects inherited and unsupported benchmark candidate keys with 400", async () => {
+  for (const candidate of ["constructor", "toString", "__proto__", "not-a-candidate"]) {
+    const response = await benchmarkWorker.fetch(
+      new Request("https://benchmark.invalid/benchmark?candidate=" + encodeURIComponent(candidate), {
+        method: "POST"
+      })
+    );
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: "Unsupported benchmark candidate"
+    });
+  }
+});
