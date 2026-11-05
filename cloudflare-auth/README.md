@@ -219,3 +219,26 @@ A Node.js-only benchmark test evaluates two OWASP-listed scrypt parameter sets w
 The benchmark records elapsed time and the Node process RSS delta without imposing a hardware-dependent timing threshold. It also checks the RFC 7914 reference vector and that distinct Unicode passwords produce distinct derived keys. The dependency is MIT-licensed, zero-runtime-dependency, and used only by the benchmark tests; it is not imported by the authentication Worker or Node API.
 
 **Important:** passing this Node.js test does not prove Cloudflare Workers compatibility. The Worker runtime has a 128 MiB isolate memory ceiling, and its CPU allowance depends on the account plan. No scrypt code is enabled in `hashPassword`, no Worker is deployed by this change, and no production KDF approval is implied. Before adoption, the same candidate must be measured in a dedicated isolated Worker with concurrency, CPU, memory, rate-limit/DoS, Unicode, and rehash tests. The 128 MiB OWASP scrypt option is not a safe default for a Worker with a 128 MiB total isolate ceiling.
+
+
+## Isolated Cloudflare Worker benchmark runner (2026-11-05)
+
+A separate, binding-free benchmark Worker and Wrangler configuration were added to the draft PR:
+
+- `scrypt-benchmark-worker.mjs` accepts only fixed 32 MiB and 64 MiB scrypt candidates.
+- `wrangler.scrypt-benchmark.jsonc` disables both the production `workers.dev` route and preview URLs; it contains no D1 binding or secret.
+- `tests/scrypt-worker-benchmark.mjs` starts `wrangler dev --remote` on loopback, checks the health route, compares the Worker result with the Node.js reference, and rejects unsupported candidate sizes.
+- The workflow syntax-checks both files. It attempts the remote benchmark only when the repository has a `CLOUDFLARE_API_TOKEN` Actions secret.
+
+### Latest CI result
+
+[Cloudflare Auth Worker validation #42090237257](https://github.com/Sami20178/All-World-App/actions/runs/42090237257) passed the existing Worker tests, the Node.js benchmark, the Wrangler preview dry-run, and the new workflow checks. The remote Worker benchmark was **skipped** because `CLOUDFLARE_API_TOKEN` is not configured for this repository. No remote Worker result is available.
+
+The Node.js-only measurements from that run were:
+
+| Candidate | Elapsed time | Node process RSS delta |
+|---|---:|---:|
+| OWASP 64 MiB (`N=2^16,r=8,p=2`) | 343.60 ms | 59,535,360 bytes |
+| OWASP 32 MiB (`N=2^15,r=8,p=3`) | 244.51 ms | 33,685,504 bytes |
+
+These measurements are specific to the GitHub runner and are not Cloudflare Worker measurements. The PR remains a draft; no KDF was added to authentication code, no Worker was deployed, and no production resource was changed. A dedicated, least-privilege Cloudflare token is still required before the remote benchmark can run.
