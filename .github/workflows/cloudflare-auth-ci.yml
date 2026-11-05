@@ -18,6 +18,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +36,24 @@ jobs:
         run: node --test cloudflare-auth/tests/worker-auth.test.mjs
       - name: Benchmark scrypt candidates (Node.js only)
         run: node --test cloudflare-auth/tests/scrypt-benchmark.test.mjs
-
+      - name: Check isolated Worker benchmark credentials
+        id: worker_benchmark_credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Remote Worker benchmark skipped: CLOUDFLARE_API_TOKEN is not configured for this repository."
+          fi
+      - name: Benchmark scrypt candidates in isolated Cloudflare Worker runtime
+        if: steps.worker_benchmark_credentials.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "6ff4ba42c59b9b8a01a0765ac703bef6"
+        run: node cloudflare-auth/tests/scrypt-worker-benchmark.mjs
       - name: Validate isolated auth preview Wrangler configuration
         run: npx --yes wrangler@4 deploy --dry-run --config cloudflare-auth/wrangler.preview.jsonc
 
