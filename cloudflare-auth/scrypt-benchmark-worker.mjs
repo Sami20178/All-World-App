@@ -36,8 +36,11 @@ export default {
       return json({ error: "Not found" }, 404);
     }
 
-    const candidate = candidates[url.searchParams.get("candidate")];
-    if (!candidate) return json({ error: "Unsupported benchmark candidate" }, 400);
+    const candidateKey = url.searchParams.get("candidate");
+    if (!Object.hasOwn(candidates, candidateKey)) {
+      return json({ error: "Unsupported benchmark candidate" }, 400);
+    }
+    const candidate = candidates[candidateKey];
 
     const targetMemoryBytes = 128 * candidate.r * (candidate.N + candidate.p + 1);
     const started = performance.now();
