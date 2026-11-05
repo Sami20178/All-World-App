@@ -32,32 +32,47 @@ jobs:
         run: node --check cloudflare-auth/preview-target.mjs && node --check cloudflare-auth/tests/preview-smoke.mjs
       - name: Check isolated benchmark Worker and runner syntax
         run: node --check cloudflare-auth/scrypt-benchmark-worker.mjs && node --check cloudflare-auth/tests/scrypt-worker-benchmark.mjs
+      - name: Test workflow credential isolation
+        run: node --test cloudflare-auth/tests/workflow-secret-isolation.test.mjs
       - name: Test auth preview target isolation
         run: node --test cloudflare-auth/tests/preview-target.test.mjs
       - name: Run auth Worker smoke tests
         run: node --test cloudflare-auth/tests/worker-auth.test.mjs
       - name: Benchmark scrypt candidates (Node.js only)
         run: node --test cloudflare-auth/tests/scrypt-benchmark.test.mjs
-      - name: Check isolated Worker benchmark credentials
-        id: worker_benchmark_credentials
+      - name: Validate isolated auth preview Wrangler configuration
+        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare-auth/wrangler.preview.jsonc
+
+  # A credentialed remote benchmark is only allowed from a manual run on main.
+  # Pull-request and ordinary push jobs never receive Cloudflare credentials.
+  remote-worker-benchmark:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install repository dependencies
+        run: npm install --no-audit --no-fund
+      - name: Require the dedicated Cloudflare benchmark token
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: bash
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Remote Worker benchmark skipped: CLOUDFLARE_API_TOKEN is not configured for this repository."
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not configured for the trusted main-branch benchmark."
+            exit 1
           fi
       - name: Benchmark scrypt candidates in isolated Cloudflare Worker runtime
-        if: steps.worker_benchmark_credentials.outputs.available == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "6ff4ba42c59b9b8a01a0765ac703bef6"
         run: node cloudflare-auth/tests/scrypt-worker-benchmark.mjs
-      - name: Validate isolated auth preview Wrangler configuration
-        run: npx --yes wrangler@4 deploy --dry-run --config cloudflare-auth/wrangler.preview.jsonc
 
   preview-smoke:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
