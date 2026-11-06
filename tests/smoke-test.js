@@ -208,7 +208,17 @@ async function main() {
     assert.equal((await jsonRequest("/api/auth/login",{username,password})).status,200,"other linked account should remain usable");
     assert.equal((await (await request("/api/auth/me",{headers:{cookie:secondCookie}})).json()).user,null,"deleted account session must no longer authenticate");
 
-    console.log("Passed: SQLite persistence, bcrypt, registration, duplicate protection, login/logout, durable sessions, account linking/switching, password-confirmed deletion, user-data cleanup, link cleanup and deleted-account login denial.");
+    // Readiness must touch an application table, not only execute a constant expression.
+    database = new Database(dbPath);
+    try {
+      database.pragma("foreign_keys=OFF");
+      database.exec("DROP TABLE users");
+    } finally { database.close(); }
+    const unavailableReadiness = await request("/api/ready");
+    assert.equal(unavailableReadiness.status,503,"readiness must fail when the core users table is unavailable");
+    assert.deepEqual(await unavailableReadiness.json(),{ok:false,ready:false,service:"all-world-api"});
+
+    console.log("Passed: SQLite persistence, bcrypt, registration, duplicate protection, login/logout, durable sessions, account linking/switching, password-confirmed deletion, user-data cleanup, link cleanup, deleted-account login denial and readiness failure when the users table is unavailable.");
   } finally {
     if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve));child.kill("SIGTERM");await Promise.race([exited,delay(1500)]);if(child.exitCode===null)child.kill("SIGKILL");}
     await fs.rm(dataDir,{recursive:true,force:true});
