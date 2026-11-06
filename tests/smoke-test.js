@@ -59,6 +59,12 @@ async function main() {
     for(let i=0;i<80;i++){if(child.exitCode!==null)throw new Error("API process exited before ready. "+logs);try{const r=await request("/api/health");if(r.ok&&(await r.json()).service==="all-world-api"){ready=true;break;}}catch(_){}await delay(100);}
     assert.equal(ready,true,"API did not become ready. "+logs);
     assert.equal((await request("/api/health")).status,200);
+    const liveness=await request("/healthz");
+    assert.equal(liveness.status,200);
+    assert.equal((await liveness.json()).service,"all-world-api");
+    const readiness=await request("/api/ready");
+    assert.equal(readiness.status,200);
+    assert.deepEqual(await readiness.json(),{ok:true,ready:true,service:"all-world-api"});
     const crossSiteMutation=await request("/api/auth/register",{method:"POST",headers:{"content-type":"application/json","origin":"https://untrusted.example"},body:JSON.stringify({username:"csrf_test_user",password:"Test-password-2026!"})});
     assert.equal(crossSiteMutation.status,403,"state-changing requests from an untrusted browser origin must be rejected");
     let applePost; try { applePost=await request("/api/auth/oauth/apple/callback",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded","origin":"https://appleid.apple.com"},body:"state=apple-callback-test",redirect:"manual"}); } catch(error) { throw new Error("Apple callback request failed; API exit="+child.exitCode+" logs="+logs+" cause="+error.message); }
