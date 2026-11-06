@@ -21,6 +21,12 @@ Beim Löschen werden das Konto, seine Kontoverbindungen, alle Sitzungen dieses K
 
 Wenn `data/users.json` aus dem früheren Prototyp vorhanden ist, werden gültige Konten einmalig nach SQLite übernommen; die ursprüngliche Datei wird als Backup nicht gelöscht. Nach der Migration ist SQLite die maßgebliche Datenbank.
 
+## Health checks
+
+- `GET /healthz` — liveness check; confirms that the Node.js process is responding.
+- `GET /api/ready` — readiness check; executes a read-only SQLite query and returns HTTP 503 if the database is unavailable.
+- `GET /api/health` — retained compatibility endpoint.
+
 ## Deployment
 
 Für ein Docker-basiertes Produktionssetup mit persistentem SQLite-Volume, HTTPS-Reverse-Proxy-Hinweisen und OAuth-Callback-Konfiguration siehe [`DEPLOYMENT.md`](./DEPLOYMENT.md). Docker-Dateien: `Dockerfile`, `compose.yaml` und `.dockerignore`. Das Hinzufügen der Dateien bedeutet nicht, dass die API bereits gehostet oder veröffentlicht wurde.
