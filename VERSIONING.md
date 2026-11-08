@@ -187,3 +187,13 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Android-Main-Build #41894080885 bestand Gradle-, Nichtleer-, Signatur- und Asset-Prüfungen; Upload des Actions-Artefakts scheiterte wegen ausgeschöpfter GitHub-Speicherquote. Kein herunterladbares Main-Artefakt. Team-Source-Build #41894347735 stellte ein Debug-Artefakt `13354649253` bereit; kein Geräteinstallationstest.
 - Keine reale Android-/Fire-OS-Installation oder Kernfunktionstests bestätigt. Fire HD 8, Fire HD 10 und Fire Max bleiben nicht getestet; Windows, macOS, Linux, iOS/iPadOS und Konsolen haben keine neuen geprüften Builds.
 - Nächster unvergebener gemeinsamer Kandidat bleibt **First Classic 0.0.0.0**. Kein neues Tag und kein App-Release erstellt.
+
+
+## Release-Gate-Nachprüfung 2026-11-08
+
+- Server-Main vor diesem Dokumentationscommit: `381646f0959def443f3f626a3c7ec948ffe07d6b`. Team-Server-Main: `25465d3fe8a4ad337ab5dc36de4acd437a14bbd7`. Die geprüften Dateien `server.js` und `tests/smoke-test.js` sind zwischen beiden Repositories per Blob-SHA identisch.
+- Die Server-Health-/Readiness-Endpunkte `GET /healthz` und `GET /api/ready` sind vorhanden. Upstream Node-Validierung #42400112114, API-CI #42400112150 und Smoke #42400112117 waren erfolgreich; Team-Server Node-Validierung #42508709684, API-CI #42508709662 und Smoke #42508709736 waren ebenfalls erfolgreich.
+- Frontend-Main ist Commit `5f68d90a6d6072294911984d051576b185d8b71f`. Frontend-Validierung #42083477191 und Site-Deploy/HTTPS-Verify #42083477203 waren erfolgreich. Der Deploy-Log meldete Worker-Version `e7e7f0cb-ee59-475d-970e-20a7543c3cb4`; Cloudflare listet danach die spätere Version `f21cabee-d51b-43f8-bffe-400e634cd458` mit 100 % Traffic, die keinem geprüften GitHub-Run eindeutig zugeordnet ist.
+- Frontend-Draft-PR [#44](https://github.com/Sami20178/All-World-App-Source-Code-/pull/44) enthält lokale WOFF2-Fonts und Lizenzdateien, ist aber nicht gemergt oder deployed. Seine Frontend-, Site- und Android-Workflows endeten ohne aufgezeichnete Steps/Logs; kein erfolgreicher APK-Build oder Gerätetest ist belegt.
+- Die Frontend-Release-Liste ist leer. Dieses Server-Repository hat weiterhin nur die Legacy-Release `All World` / Tag `All-World`; sie zählt nicht zum App-Versionsschema. Die nächste gemeinsame unvergebene Version bleibt **`First Classic 0.0.0.0`**.
+- Keine Android-APK als Release-Asset, kein neues App-Release und kein Versions-Tag wurden angelegt. Echte Android-/Fire-OS-Installation und Kernfunktionstests bleiben offen. Der Server-Release darf keine APK als Server-Binary ausgeben.
