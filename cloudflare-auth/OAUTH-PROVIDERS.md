@@ -124,3 +124,6 @@ Der Branch `automation/oidc-id-token-validation-2026-11-09` ergänzt eine option
 - Tests decken gültigen Login, fehlende JWKS-Konfiguration, falsche Audience und Signatur mit einem nicht vertrauenswürdigen Schlüssel ab.
 
 **Statusgrenze:** Diese Implementierung liegt nur auf dem genannten Branch. Sie ist weder in Main gemergt noch auf Preview oder Produktion deployed. Es sind weiterhin 0 OAuth-Provider konfiguriert. ES256, JWKS-Key-Rotation/Cache-Verhalten und echte Provider-Callbacks benötigen zusätzliche Tests. Apple bleibt wegen des signierten Client-Secret-JWTs ein separater Adapter; GitHub bleibt OAuth 2.0.
+### Ergänzung: PKCE ist für OIDC verpflichtend
+
+OIDC-Provider werden nur akzeptiert, wenn `pkce` nicht ausdrücklich deaktiviert wurde. Konfigurationen mit `oidc: true` und `pkce: false` werden aus der Providerliste ausgeschlossen. Die Branch-Tests decken zusätzlich ES256/P-256, falsche Nonce, ungültige Audience, einen nicht vertrauenswürdigen Signaturschlüssel sowie fehlende JWKS-/PKCE-Konfiguration ab. Der aktuelle Branch ist noch nicht gemergt oder deployed.
