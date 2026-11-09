@@ -374,16 +374,33 @@ async function verifyOidcIdToken(token, config, expectedNonceHash) {
     signal: AbortSignal.timeout(10000)
   });
   if (!jwksResponse.ok) throw new Error("jwks_unavailable");
-  const jwks = await jwksResponse.json().catch(() => ({}));
-  if (!jwks || !Array.isArray(jwks.keys) || jwks.keys.length > 50) throw new Error("invalid_jwks");
-  const jwk = jwks.keys.find(key =>
+  const jwksText = await jwksResponse.text();
+  if (jwksText.length > 65536) throw new Error("jwks_too_large");
+  let jwks;
+  try { jwks = JSON.parse(jwksText); } catch { throw new Error("invalid_jwks"); }
+  if (!jwks || !Array.isArray(jwks.keys) || jwks.keys.length < 1 || jwks.keys.length > 50) {
+    throw new Error("invalid_jwks");
+  }
+  const matchingKeys = jwks.keys.filter(key =>
     key && typeof key === "object" && key.kid === header.kid &&
     (key.use === undefined || key.use === "sig") &&
     (key.alg === undefined || key.alg === alg) &&
-    (!Array.isArray(key.key_ops) || key.key_ops.includes("verify")) &&
-    key.d === undefined && key.p === undefined && key.q === undefined
+    (key.key_ops === undefined || (Array.isArray(key.key_ops) && key.key_ops.includes("verify")))
   );
-  if (!jwk) throw new Error("signing_key_not_found");
+  if (matchingKeys.length !== 1) throw new Error("signing_key_not_unique");
+  const jwk = matchingKeys[0];
+  if (["d", "p", "q", "dp", "dq", "qi", "oth", "k"].some(field => jwk[field] !== undefined)) {
+    throw new Error("private_jwk_not_allowed");
+  }
+  if (alg === "RS256") {
+    const modulus = typeof jwk.n === "string" ? fromB64url(jwk.n) : new Uint8Array();
+    if (jwk.kty !== "RSA" || modulus.length < 256 || modulus.length > 1024 ||
+        typeof jwk.e !== "string" || !jwk.e) throw new Error("invalid_rsa_jwk");
+  } else if (jwk.kty !== "EC" || jwk.crv !== "P-256" ||
+      typeof jwk.x !== "string" || typeof jwk.y !== "string" ||
+      fromB64url(jwk.x).length !== 32 || fromB64url(jwk.y).length !== 32) {
+    throw new Error("invalid_ec_jwk");
+  }
 
   let importAlgorithm;
   let verifyAlgorithm;
@@ -406,14 +423,15 @@ async function verifyOidcIdToken(token, config, expectedNonceHash) {
   const now = Math.floor(Date.now() / 1000);
   const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (claims.iss !== config.oidcIssuer ||
+      !Array.isArray(audiences) || audiences.length < 1 || audiences.some(value => typeof value !== "string") ||
       !audiences.includes(config.clientId) ||
-      (claims.azp !== undefined && claims.azp !== config.clientId) ||
+      (claims.azp !== undefined && (typeof claims.azp !== "string" || claims.azp !== config.clientId)) ||
       (audiences.length > 1 && claims.azp !== config.clientId) ||
-      typeof claims.exp !== "number" || claims.exp <= now ||
-      typeof claims.iat !== "number" || claims.iat > now + 300 || claims.iat < now - 3600 ||
-      (claims.nbf !== undefined && (typeof claims.nbf !== "number" || claims.nbf > now + 300)) ||
+      !Number.isFinite(claims.exp) || claims.exp <= now ||
+      !Number.isFinite(claims.iat) || claims.iat > now + 300 || claims.iat < now - 3600 ||
+      (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now + 300)) ||
       typeof claims.sub !== "string" || !claims.sub || claims.sub.length > 255 ||
-      typeof claims.nonce !== "string") {
+      typeof claims.nonce !== "string" || !claims.nonce || claims.nonce.length > 256) {
     throw new Error("invalid_id_token_claims");
   }
   const nonceHash = await sha256(claims.nonce);
