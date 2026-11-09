@@ -206,3 +206,12 @@ Die App-Versionen werden mit dem Frontend-Repository abgestimmt: [All-World-App-
 - Team-Server und Team-Source: keine Tags und keine Releases.
 - Nächste gemeinsame App-Version bleibt **First Classic 0.0.0.0**. Kein Versions-Tag und kein Release wurde angelegt.
 - Es liegt kein aktuelles, abrufbares und auf echter Android-Hardware angemessen getestetes APK-Asset vor. Deshalb bleibt das Release-Gate geschlossen.
+
+
+## Gemeinsamer Release-Audit 09.11.2026, 21:13 CET
+
+- Server-Main: Commit 475ad59f105b71a9647a9d27881d9a0dbe2204b3. OIDC-ID-Token-Verifikation ist seit Commit 4a2be3c1939d14d97964274761bdfa8ddd2b24c9 in Main und die sechs zugehörigen automatisierten Checks waren erfolgreich.
+- Produktionsgrenze: Der aktive Auth-Worker all-world-auth-api steht auf Version 6 / Deployment 72a69a24-5178-4164-8c13-7af85012e921 mit Commit-Annotation 0202ccbd1b6263e6c8cea40a52c67cdaaa24755f. Der OIDC-Code aus 4a2be3c ist nicht als produktiv deployed bestätigt; Provider-Discovery meldet 0 Anbieter.
+- Team-Server: Commit 45e3da8edf09648443e39c2e34decac4f061d712 synchronisiert worker.mjs, schema.sql, worker-auth.test.mjs und OAUTH-PROVIDERS.md mit dem Upstream. Node-Validierung, API-CI, Auth-Worker-Validierung und API/MCP-Smoke liefen erfolgreich.
+- Tag-Referenzen: Frontend leer; Server nur All-World; Team-Server leer; Team-Source leer. Release-Listen: Frontend leer; Server nur Legacy-Release All World; beide Team-Repositories leer.
+- Nächste gemeinsame App-Version bleibt First Classic 0.0.0.0. Kein neues Tag, kein App-Release und kein APK-Asset erstellt. Android-/Fire-OS-Gerätetests und das Release-Gate bleiben offen.
