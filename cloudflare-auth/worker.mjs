@@ -19,7 +19,9 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS oauth_identities (provider TEXT NOT NULL, provider_user_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, display_name TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(provider, provider_user_id))",
   "CREATE INDEX IF NOT EXISTS oauth_identities_user_idx ON oauth_identities(user_id)",
   "CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, provider TEXT NOT NULL, code_verifier TEXT, user_id TEXT, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)",
-  "CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at)"
+  "CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at)",
+  "CREATE TABLE IF NOT EXISTS oauth_nonces (state_hash TEXT PRIMARY KEY, nonce_hash TEXT NOT NULL, expires_at INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces(expires_at)"
 ];
 const schemaPromises = new WeakMap();
 
@@ -256,13 +258,24 @@ async function requireSession(request, env) {
 
 
 const OAUTH_RESERVED_PROVIDERS = new Set(["apple", "supercell"]);
-const OAUTH_RESERVED_PARAMS = new Set(["client_id", "client_secret", "redirect_uri", "response_type", "state", "code_challenge", "code_challenge_method", "scope"]);
+const OAUTH_RESERVED_PARAMS = new Set(["client_id", "client_secret", "redirect_uri", "response_type", "state", "nonce", "code_challenge", "code_challenge_method", "scope"]);
 
 function secureHttpsUrl(value) {
   try {
     const url = new URL(typeof value === "string" ? value : "");
     if (url.protocol !== "https:" || url.username || url.password || url.hash) return "";
     return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function secureHttpsIssuer(value) {
+  if (typeof value !== "string" || value.length > 512) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return "";
+    return value;
   } catch {
     return "";
   }
@@ -293,6 +306,10 @@ function parseOAuthProviders(env) {
         !authorizeUrl || !tokenUrl || !userInfoUrl) continue;
     const scopes = Array.isArray(item.scopes) ? item.scopes.join(" ") : String(item.scopes || "openid profile email");
     if (scopes.length > 500) continue;
+    const oidc = item.oidc === true;
+    const oidcIssuer = oidc ? secureHttpsIssuer(item.oidcIssuer) : "";
+    const jwksUrl = oidc ? secureHttpsUrl(item.jwksUrl) : "";
+    if (oidc && (!oidcIssuer || !jwksUrl || !scopes.split(/\s+/).includes("openid"))) continue;
     const label = typeof item.label === "string" && item.label.trim().length <= 60 ? item.label.trim() : slug;
     const clientAuthMethod = item.clientAuthMethod === "basic" ? "basic" : "body";
     const extraAuthorizeParams = {};
@@ -310,6 +327,9 @@ function parseOAuthProviders(env) {
       authorizeUrl,
       tokenUrl,
       userInfoUrl,
+      oidc,
+      oidcIssuer,
+      jwksUrl,
       label: label || slug,
       scopes,
       clientAuthMethod,
@@ -324,6 +344,83 @@ function parseOAuthProviders(env) {
     };
   }
   return providers;
+}
+
+async function verifyOidcIdToken(token, config, expectedNonceHash) {
+  if (typeof token !== "string" || token.length > 16384 || !expectedNonceHash) throw new Error("invalid_id_token");
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some(part => !part || part.length > 12000)) throw new Error("invalid_id_token");
+
+  let header;
+  let claims;
+  try {
+    header = JSON.parse(new TextDecoder().decode(fromB64url(parts[0])));
+    claims = JSON.parse(new TextDecoder().decode(fromB64url(parts[1])));
+  } catch {
+    throw new Error("invalid_id_token");
+  }
+  if (!header || typeof header !== "object" || Array.isArray(header) ||
+      !claims || typeof claims !== "object" || Array.isArray(claims) ||
+      header.crit !== undefined || typeof header.kid !== "string" || header.kid.length > 128) {
+    throw new Error("invalid_id_token");
+  }
+
+  const alg = header.alg;
+  if (alg !== "RS256" && alg !== "ES256") throw new Error("unsupported_id_token_alg");
+  const jwksResponse = await fetch(config.jwksUrl, {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+    redirect: "error",
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!jwksResponse.ok) throw new Error("jwks_unavailable");
+  const jwks = await jwksResponse.json().catch(() => ({}));
+  if (!jwks || !Array.isArray(jwks.keys) || jwks.keys.length > 50) throw new Error("invalid_jwks");
+  const jwk = jwks.keys.find(key =>
+    key && typeof key === "object" && key.kid === header.kid &&
+    (key.use === undefined || key.use === "sig") &&
+    (key.alg === undefined || key.alg === alg) &&
+    (!Array.isArray(key.key_ops) || key.key_ops.includes("verify")) &&
+    key.d === undefined && key.p === undefined && key.q === undefined
+  );
+  if (!jwk) throw new Error("signing_key_not_found");
+
+  let importAlgorithm;
+  let verifyAlgorithm;
+  if (alg === "RS256" && jwk.kty === "RSA") {
+    importAlgorithm = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+    verifyAlgorithm = { name: "RSASSA-PKCS1-v1_5" };
+  } else if (alg === "ES256" && jwk.kty === "EC" && jwk.crv === "P-256") {
+    importAlgorithm = { name: "ECDSA", namedCurve: "P-256" };
+    verifyAlgorithm = { name: "ECDSA", hash: "SHA-256" };
+  } else {
+    throw new Error("unsupported_id_token_key");
+  }
+
+  const publicKey = await crypto.subtle.importKey("jwk", jwk, importAlgorithm, false, ["verify"]);
+  const signedBytes = new TextEncoder().encode(parts[0] + "." + parts[1]);
+  const signature = fromB64url(parts[2]);
+  const signatureValid = await crypto.subtle.verify(verifyAlgorithm, publicKey, signature, signedBytes);
+  if (!signatureValid) throw new Error("invalid_id_token_signature");
+
+  const now = Math.floor(Date.now() / 1000);
+  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (claims.iss !== config.oidcIssuer ||
+      !audiences.includes(config.clientId) ||
+      (claims.azp !== undefined && claims.azp !== config.clientId) ||
+      (audiences.length > 1 && claims.azp !== config.clientId) ||
+      typeof claims.exp !== "number" || claims.exp <= now ||
+      typeof claims.iat !== "number" || claims.iat > now + 300 || claims.iat < now - 3600 ||
+      (claims.nbf !== undefined && (typeof claims.nbf !== "number" || claims.nbf > now + 300)) ||
+      typeof claims.sub !== "string" || !claims.sub || claims.sub.length > 255 ||
+      typeof claims.nonce !== "string") {
+    throw new Error("invalid_id_token_claims");
+  }
+  const nonceHash = await sha256(claims.nonce);
+  if (!constantTimeEqual(new TextEncoder().encode(nonceHash), new TextEncoder().encode(expectedNonceHash))) {
+    throw new Error("invalid_id_token_nonce");
+  }
+  return claims;
 }
 
 function apiOrigin(request, env) {
@@ -382,10 +479,17 @@ async function handleOAuthStart(request, env, db, slug) {
   const current = await currentSession(request, env);
   const state = randomToken(32);
   const verifier = config.pkce ? randomToken(48) : "";
+  const nonce = config.oidc ? randomToken(32) : "";
+  const stateHash = await sha256(state);
   const now = Date.now();
   await db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").bind(now).run();
+  await db.prepare("DELETE FROM oauth_nonces WHERE expires_at <= ?").bind(now).run();
   await db.prepare("INSERT INTO oauth_states(state_hash,provider,code_verifier,user_id,expires_at,created_at) VALUES(?,?,?,?,?,?)")
-    .bind(await sha256(state), slug, verifier || null, current ? current.user.id : null, now + 10 * 60 * 1000, now).run();
+    .bind(stateHash, slug, verifier || null, current ? current.user.id : null, now + 10 * 60 * 1000, now).run();
+  if (nonce) {
+    await db.prepare("INSERT INTO oauth_nonces(state_hash,nonce_hash,expires_at) VALUES(?,?,?)")
+      .bind(stateHash, await sha256(nonce), now + 10 * 60 * 1000).run();
+  }
 
   const callbackUrl = origin + "/api/auth/oauth/" + slug + "/callback";
   const authorize = new URL(config.authorizeUrl);
@@ -395,6 +499,7 @@ async function handleOAuthStart(request, env, db, slug) {
   authorize.searchParams.set("redirect_uri", callbackUrl);
   authorize.searchParams.set("scope", config.scopes);
   authorize.searchParams.set("state", state);
+  if (nonce) authorize.searchParams.set("nonce", nonce);
   if (verifier) {
     const challengeBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
     authorize.searchParams.set("code_challenge", b64url(challengeBytes));
@@ -432,10 +537,19 @@ async function handleOAuthCallback(request, env, db, slug) {
   const flow = await db.prepare("SELECT state_hash,provider,code_verifier,user_id,expires_at FROM oauth_states WHERE state_hash=? AND provider=? AND expires_at>?")
     .bind(stateHash, slug, Date.now()).first();
   if (!flow) return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  const nonceRow = config.oidc
+    ? await db.prepare("SELECT nonce_hash FROM oauth_nonces WHERE state_hash=? AND expires_at>?").bind(stateHash, Date.now()).first()
+    : null;
+  if (config.oidc && (!nonceRow || typeof nonceRow.nonce_hash !== "string")) {
+    return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  }
   const consumed = await db.prepare("DELETE FROM oauth_states WHERE state_hash=? AND provider=? AND expires_at>?")
     .bind(stateHash, slug, Date.now()).run();
   if (!consumed.meta || consumed.meta.changes !== 1) {
     return oauthRedirect(env, { oauth_error: "invalid_state" }, [clearStateCookie]);
+  }
+  if (config.oidc) {
+    await db.prepare("DELETE FROM oauth_nonces WHERE state_hash=?").bind(stateHash).run();
   }
 
   if (url.searchParams.has("error") || !url.searchParams.get("code") || url.searchParams.get("code").length > 4096) {
@@ -479,6 +593,17 @@ async function handleOAuthCallback(request, env, db, slug) {
     if (!tokenResponse.ok || typeof tokenData.access_token !== "string" || !tokenData.access_token) {
       return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
+    let oidcClaims = null;
+    if (config.oidc) {
+      if (typeof tokenData.id_token !== "string" || !nonceRow?.nonce_hash) {
+        return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+      }
+      try {
+        oidcClaims = await verifyOidcIdToken(tokenData.id_token, config, nonceRow.nonce_hash);
+      } catch {
+        return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+      }
+    }
 
     const userInfoHeaders = new Headers({
       "Authorization": "Bearer " + tokenData.access_token,
@@ -499,7 +624,15 @@ async function handleOAuthCallback(request, env, db, slug) {
     if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
       return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
-    const providerUserId = readOAuthField(profile, config.idField) ?? readOAuthField(profile, "id") ?? readOAuthField(profile, "sub");
+    if (config.oidc) {
+      const userInfoSubject = readOAuthField(profile, "sub");
+      if (typeof userInfoSubject !== "string" || userInfoSubject !== oidcClaims.sub) {
+        return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
+      }
+    }
+    const providerUserId = config.oidc
+      ? oidcClaims.sub
+      : readOAuthField(profile, config.idField) ?? readOAuthField(profile, "id") ?? readOAuthField(profile, "sub");
     if (providerUserId === undefined || providerUserId === null || !String(providerUserId) || String(providerUserId).length > 255) {
       return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
