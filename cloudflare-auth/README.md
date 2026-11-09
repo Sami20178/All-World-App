@@ -305,3 +305,12 @@ Cloudflare-Read-back nach dem dokumentierten Post-Deployment-Smoke bestätigt:
 - Der synthetische Register/Login/Session/Logout-Test lief auf einer isolierten Preview und ist kein Produktions-Account-Lifecycle-Test.
 
 **Offen:** Kein produktiver Register/Login/Logout- oder Browser-Cookie-Lifecycle-Test. Die Produktions-KDF bleibt PBKDF2-HMAC-SHA-256 mit 310.000 Iterationen; die beobachtete Worker-Runtime-Kompatibilitätsgrenze ist nicht gelöst. Die 100.000-Iterationen-Preview bleibt nicht produktionsfreigegeben. Der Remote-KDF-Benchmark aus Draft-PR #19 wurde nicht ausgeführt; das erforderliche geschützte Actions-Secret ist in diesem Lauf nicht verfügbar. Keine Produktionsdaten, D1-Zeilen, Secrets oder Worker-Bindings wurden durch diese Prüfung verändert.
+
+ 
+## Aktuelle KDF-Parameter und Cloudflare-Runtime-Grenzen – 2026-11-09
+
+Die offizielle [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) empfiehlt aktuell PBKDF2-HMAC-SHA-256 mit 600.000 Iterationen und PBKDF2-HMAC-SHA-512 mit 220.000 Iterationen. Der dokumentierte Produktionswert von 310.000 / SHA-256 und die isolierte Preview mit 100.000 / SHA-512 liegen darunter. Diese Empfehlung ist ein Sicherheitsmaßstab; sie ersetzt keine Messung des konkreten Cloudflare-Worker-Limits.
+
+Die offizielle [Cloudflare Workers Limits-Dokumentation](https://developers.cloudflare.com/workers/platform/limits/) (zuletzt aktualisiert 29.10.2026) nennt 10 ms CPU pro HTTP-Anfrage für Workers Free und bei Workers Paid standardmäßig 30 Sekunden, konfigurierbar bis 5 Minuten. Der verbundene Account zeigt einen Free-Website-Plan; ein separates Workers-Paid-Entitlement wurde nicht bestätigt. In den ausgelesenen Worker-Settings war kein eigenes cpu_ms-Limit vorhanden. Die tatsächliche Workers-Tarif-/CPU-Konfiguration muss vor der nächsten KDF-Entscheidung geklärt werden.
+
+**Keine Produktions-KDF-Änderung:** Der nächste Schritt bleibt ein isolierter synthetischer Benchmark im tatsächlichen Tarif mit CPU, Speicher, Parallelität, Passwortlängen, Hash-Migration und Rollback-Pfad. Keine echten Konten und keine Produktions-D1-Zeilen für Benchmarks verwenden. Die 100.000-Iterationen-Preview ist nicht produktionsfreigegeben.
