@@ -97,3 +97,11 @@ Server-Main `fa9c4b4` und Team-Server-Main `3c1c42c` bestanden ihre aktuellen No
 - Produktions-Smokes prüften Health, Readiness und Provider-Discovery und meldeten 0 OAuth-Anbieter. Der synthetische Account-E2E lief auf isolierter Preview, nicht auf Produktion.
 - PR #19 für einen isolierten KDF-Benchmark bleibt Draft und nicht mergebar; der Remote-Worker-Benchmark wurde nicht ausgeführt.
 - Nächste freie gemeinsame Version bleibt First Classic 0.0.0.0. Keine APK, kein Tag und kein Release erstellt.
+
+
+Cloudflare-Nachprüfung – 2026-11-09, 20:35 CET
+
+- Website-Worker Version 340 / Deployment 3434d8b7-90d2-41cf-bf95-5938203f8b76, 100 % Traffic, keine Commit-Annotation. Direkter HTTPS-Abruf nicht möglich; Live-Inhalt nicht bestätigt.
+- MCP-Worker Version 31 / Deployment dab40ab3-c60b-4846-8df2-e61ce8f3aa76, 100 % Traffic, keine Commit-Annotation; Script-ETag unverändert gegenüber Version 30. Kein neuer Smoke nach Version 31.
+- Auth-Worker Version 6 bleibt auf Deployment 72a69a24 / Commit 0202ccbd.
+- Die früher dokumentierten Website-Version 335 und MCP-Version 30 sind historische Stände.
