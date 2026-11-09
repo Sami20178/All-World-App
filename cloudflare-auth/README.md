@@ -273,3 +273,21 @@ The deployed module read-back contains the required email guard (rejects missing
 The KDF remains a release/security blocker: the project previously observed a Worker runtime failure above 100,000 PBKDF2 iterations in isolated preview diagnostics, while production still uses 310,000. The 100,000-iteration PBKDF2-SHA-512 preview candidate remains below the current OWASP PBKDF2-SHA-512 recommendation and is not approved for production. Do not lower the production work factor as a quick fix. Evaluate a Worker-compatible Argon2id/scrypt implementation or a managed auth service with real runtime, memory, concurrency, and migration tests before changing password storage.
 
 Email verification, password reset, and external OAuth remain unavailable until the required token schema, transactional mail service, provider configuration, and end-to-end tests exist.
+ 
+## Post-deployment smoke follow-up — 2026-11-09
+
+The following successful runs occurred after production deployment 72a69a24-5178-4164-8c13-7af85012e921:
+
+- [Live API/MCP smoke #42675741552](https://github.com/Sami20178/All-World-App/actions/runs/42675741552), attempt 2: passed. The account-auth portion checked /api/health, /api/ready, and /api/auth/providers; provider discovery returned 0 providers. It was read-only and created or changed no accounts.
+- [Cloudflare Auth Worker validation #42675741140](https://github.com/Sami20178/All-World-App/actions/runs/42675741140): passed on the isolated preview. Its synthetic E2E covered health/readiness, anonymous-route protection, registration, session restoration, email login, wrong-password rejection, session rotation, logout, and synthetic account deletion. This is preview evidence, not a production account-lifecycle test.
+- [Live API/MCP smoke #42679974690](https://github.com/Sami20178/All-World-App/actions/runs/42679974690): passed. It exercised MCP OAuth 2.1 authorization-code/PKCE, token exchange, authenticated MCP initialization, tool listing, get_api_health, get_site_info, and the one-time private plugin-settings launch. Its account-auth checks again passed health/readiness/provider discovery and reported 0 providers.
+- [API CI #42679974675](https://github.com/Sami20178/All-World-App/actions/runs/42679974675): passed.
+- Team-Server [Auth Worker validation #42679984279](https://github.com/World-Team/All-World-App-Team-Place/actions/runs/42679984279): local validation passed; preview-smoke was skipped by that mirror workflow.
+
+A read-only D1 verification recorded 0 users, 0 sessions, 0 OAuth identities, and 0 OAuth states, with changed_db=false and rows_written=0.
+
+**What is still not proven:** no production registration/login/logout or browser-cookie lifecycle test was run. The read-only production smoke does not create an account. The preview E2E uses a separate Worker and D1. Production still uses PBKDF2-HMAC-SHA-256 at 310,000 iterations, so the previously observed Worker compatibility risk above 100,000 iterations remains unresolved.
+
+The remote scrypt/Argon2id benchmark in draft PR [#19](https://github.com/Sami20178/All-World-App/pull/19) has not run because the GitHub Actions secret CLOUDFLARE_API_TOKEN is not configured. Do not paste a token into chat or commit it; configure it only through the repository's protected Actions secret settings if the project owner authorizes that step.
+
+No production D1 rows, secrets, bindings, DNS records, or OAuth provider settings were changed by these smoke tests.
