@@ -731,3 +731,92 @@ test("OIDC login rejects an ID token signed by a key outside the provider JWKS",
     globalThis.fetch = originalFetch;
   }
 });
+test("OIDC ID-token verification supports ES256 with a P-256 JWKS key", async () => {
+  const authorizeUrl = "https://ecdsa.example.test/authorize";
+  const tokenUrl = "https://ecdsa.example.test/token";
+  const userInfoUrl = "https://ecdsa.example.test/userinfo";
+  const jwksUrl = "https://ecdsa.example.test/jwks";
+  const issuer = "https://ecdsa.example.test";
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"]
+  );
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  Object.assign(publicJwk, { kid: "ecdsa-test-key", use: "sig", alg: "ES256" });
+  const config = {
+    demo: {
+      clientId: "ecdsa-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const nonce = authorize.searchParams.get("nonce");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "ES256", typ: "JWT", kid: "ecdsa-test-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "ecdsa-client",
+    exp: now + 300,
+    iat: now,
+    sub: "ecdsa-subject-7",
+    nonce
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    keyPair.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const idToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "ecdsa-access-token", id_token: idToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) {
+      return new Response(JSON.stringify({ sub: "ecdsa-subject-7", name: "ECDSA User" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    throw new Error("Unexpected ES256 test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=ecdsa-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth"), "success");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT provider_user_id FROM oauth_identities WHERE provider=?").get("demo").provider_user_id, "ecdsa-subject-7");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
