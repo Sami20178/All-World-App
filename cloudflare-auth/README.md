@@ -291,3 +291,17 @@ A read-only D1 verification recorded 0 users, 0 sessions, 0 OAuth identities, an
 The remote scrypt/Argon2id benchmark in draft PR [#19](https://github.com/Sami20178/All-World-App/pull/19) has not run because the GitHub Actions secret CLOUDFLARE_API_TOKEN is not configured. Do not paste a token into chat or commit it; configure it only through the repository's protected Actions secret settings if the project owner authorizes that step.
 
 No production D1 rows, secrets, bindings, DNS records, or OAuth provider settings were changed by these smoke tests.
+ 
+## Produktions-Read-back – 2026-11-09, 20:19 CET
+
+Cloudflare-Read-back nach dem dokumentierten Post-Deployment-Smoke bestätigt:
+
+- Aktiver Worker: all-world-auth-api.
+- Deployment: 72a69a24-5178-4164-8c13-7af85012e921.
+- Worker-Version: df4737b8-e4b2-44a4-a69a-798a8be2b2d9, Versionsnummer 6, 100 % Traffic.
+- Version-Annotation: Repository Sami20178/All-World-App, Commit 0202ccbd1b6263e6c8cea40a52c67cdaaa24755f; Nachricht dokumentiert die E-Mail-Pflicht für Registrierung und den OAuth-Callback-Fix.
+- Sichtbare Bindings: APP_ORIGIN, AUTH_DB (D1), RATE_LIMIT_SECRET. Secret-Werte wurden nicht ausgelesen.
+- Produktions-Smokes nach dem Deployment bestätigten /api/health, /api/ready und /api/auth/providers. Die Provider-Discovery lieferte 0 konfigurierte OAuth-Anbieter.
+- Der synthetische Register/Login/Session/Logout-Test lief auf einer isolierten Preview und ist kein Produktions-Account-Lifecycle-Test.
+
+**Offen:** Kein produktiver Register/Login/Logout- oder Browser-Cookie-Lifecycle-Test. Die Produktions-KDF bleibt PBKDF2-HMAC-SHA-256 mit 310.000 Iterationen; die beobachtete Worker-Runtime-Kompatibilitätsgrenze ist nicht gelöst. Die 100.000-Iterationen-Preview bleibt nicht produktionsfreigegeben. Der Remote-KDF-Benchmark aus Draft-PR #19 wurde nicht ausgeführt; das erforderliche geschützte Actions-Secret ist in diesem Lauf nicht verfügbar. Keine Produktionsdaten, D1-Zeilen, Secrets oder Worker-Bindings wurden durch diese Prüfung verändert.
