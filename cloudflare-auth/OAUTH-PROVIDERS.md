@@ -85,3 +85,31 @@ Add each provider as another object entry. All URLs must use HTTPS. The API reje
 6. Do not advertise a provider as live until a real browser login and callback have succeeded.
 
 The existing flow uses a one-time random state stored hashed in D1, an HttpOnly/Secure state cookie, a short-lived callback record, rate limits, and optional PKCE. A provider being listed in the frontend catalog does not mean it is configured or live.
+## Anbieter-Audit 09.11.2026 – offizielle Anforderungen und tatsächlicher Projektstatus
+
+| Anbieter | Offizieller Flow | Aktueller Projektstatus | Vor einer Aktivierung erforderlich |
+|---|---|---|---|
+| Google | OpenID Connect, Authorization Code; Discovery über `https://accounts.google.com/.well-known/openid-configuration` | Nicht konfiguriert. Der generische Worker kann Token/UserInfo abrufen, validiert aber aktuell kein OIDC-ID-Token mit JWKS/Issuer/Audience/Nonce. | Google-Client-ID/-Secret, exakte Callback-URL, `openid profile email`, PKCE S256 und vollständige ID-Token-/Nonce-/JWKS-Prüfung. |
+| Microsoft Entra ID | OpenID Connect; tenantbezogene Discovery und Endpunkte | Nicht konfiguriert. Keine Entra-App und keine Zugangsdaten bestätigt. | Tenant-/Authority-Auswahl, Client-ID/-Secret, exakte Callback-URL, `openid profile email`, PKCE und ID-Token-Prüfung gegen Tenant-Issuer/JWKS/Audience/Nonce. |
+| GitHub | OAuth 2.0 Web Application Flow, kein allgemeiner OIDC-ID-Token-Flow | Nicht konfiguriert. Der generische Worker kann prinzipiell einen OAuth-UserInfo-Endpunkt verwenden; kein GitHub-OAuth-App-Nachweis vorhanden. | OAuth-App, exakte Callback-URL, zufälliger State, PKCE S256, minimale Scopes `read:user user:email`; stabile ID aus `/user`. Private E-Mail-Adressen benötigen die passende E-Mail-Berechtigung und eine zusätzliche Prüfung; E-Mail darf optional bleiben. |
+| Roblox | OAuth 2.0 Authorization Code + PKCE und OIDC-Identität; Dokumentation kennzeichnet OAuth 2.0 als Beta | Nicht konfiguriert. Kein Roblox-Client vorhanden. Der generische Worker validiert noch kein OIDC-ID-Token. | Roblox-App, exakte Callback-URL, `openid profile`, PKCE S256, Discovery/UserInfo/JWKS prüfen und ID-Token-Signatur/Issuer/Audience/Nonce validieren. Roblox dokumentiert, dass ein 13+-Konto zur Autorisierung von OAuth-Apps erforderlich ist. |
+| Apple | Sign in with Apple mit signiertem ID-Token; Schlüssel über `https://appleid.apple.com/auth/keys` | Im Cloudflare-Worker ausdrücklich reserviert und nicht aktiviert. Die Auth.js-Referenzdatei importiert einen Apple-Provider, ist aber laut Kommentar nicht in den normalen Server eingebunden. | Eigener Apple-Callback: Client-Secret-JWT, ES256/JWKS-Signaturprüfung, Issuer, Audience/Services-ID, Ablaufzeit und Nonce prüfen; Schlüsselrotation unterstützen. Der generische UserInfo-Adapter reicht dafür nicht. |
+| Supercell | – | Ausgeschlossen, wie vom Projekt festgelegt. | Nicht implementieren. |
+
+### Gemeinsame Sicherheitsgrenze
+
+- Produktions-`OAUTH_PROVIDERS_JSON` ist nicht gesetzt; die Live-Provider-Discovery meldet 0 Anbieter.
+- Die vorhandene Worker-Implementierung nutzt State, browsergebundene HttpOnly/Secure-Cookies, kurzlebige D1-State-Einträge, Rate-Limits und optional PKCE. Sie validiert derzeit aber keine OIDC-ID-Tokens anhand von JWKS, Issuer, Audience und Nonce.
+- Daher werden Google, Microsoft und Roblox trotz offizieller OIDC-Unterstützung **nicht** als produktionsbereit bezeichnet. GitHub ist OAuth 2.0 und benötigt einen eigenen echten App-Test. Apple benötigt einen separaten Adapter.
+- Die Referenzdatei `server-integrations/authjs/express-auth.config.ts` ist ausdrücklich nicht in `normal-server` verdrahtet. Eine Provider-Importzeile ist kein funktionsfähiger Login.
+- Keine Provider-Client-ID, kein Secret, kein privater Schlüssel und keine Callback-Registrierung wurden erstellt oder gespeichert.
+
+### Offizielle Primärquellen
+
+- [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect) · [Google Discovery](https://accounts.google.com/.well-known/openid-configuration)
+- [Apple Sign in with Apple REST API](https://developer.apple.com/documentation/signinwithapplerestapi) · [Apple user verification](https://developer.apple.com/documentation/signinwithapple/verifying-a-user) · [Apple public keys](https://developer.apple.com/documentation/signinwithapplerestapi/fetch-apple%27s-public-key-for-verifying-token-signature)
+- [Microsoft OIDC](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc)
+- [GitHub OAuth App authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
+- [Roblox OAuth 2.0 overview](https://create.roblox.com/docs/cloud/auth/oauth2-overview) · [Roblox OAuth 2.0 reference](https://create.roblox.com/docs/cloud/auth/oauth2-reference)
+
+**Geprüft:** 09.11.2026. Die Links belegen die offiziellen Protokollanforderungen, nicht eine aktive All-World-Provider-Konfiguration.
