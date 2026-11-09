@@ -321,7 +321,6 @@ test("OAuth providers are enabled only from valid server-side config and use a o
   };
   const bindings = env({
     API_PUBLIC_URL: "https://api.example.test",
-    AUTH_TEST_DIAGNOSTICS: "1",
     OAUTH_PROVIDERS_JSON: JSON.stringify(config)
   });
   const providerResponse = await worker.fetch(request("/api/auth/providers"), bindings);
@@ -390,7 +389,7 @@ test("OAuth providers are enabled only from valid server-side config and use a o
     ), bindings);
     assert.equal(callback.status, 302);
     const callbackLocation = new URL(callback.headers.get("Location"));
-    assert.equal(callbackLocation.searchParams.get("oauth"), "success", "OAuth callback redirect: " + callbackLocation.toString());
+    assert.equal(callbackLocation.searchParams.get("oauth"), "success");
     assert.equal(callbackLocation.searchParams.get("provider"), "demo");
     const cookies = cookiesFrom(callback);
     const sessionCookie = namedCookieFrom(callback, "allworld.sid");
