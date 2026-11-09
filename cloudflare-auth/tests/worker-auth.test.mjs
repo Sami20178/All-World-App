@@ -420,3 +420,492 @@ test("OAuth providers are enabled only from valid server-side config and use a o
     globalThis.fetch = originalFetch;
   }
 });
+test("OIDC login validates the ID token signature, issuer, audience, subject and one-time nonce", async () => {
+  const authorizeUrl = "https://identity.example.test/authorize";
+  const tokenUrl = "https://identity.example.test/token";
+  const userInfoUrl = "https://identity.example.test/userinfo";
+  const jwksUrl = "https://identity.example.test/jwks";
+  const issuer = "https://identity.example.test";
+  const keyPair = await webcrypto.subtle.generateKey({
+    name: "RSASSA-PKCS1-v1_5",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256"
+  }, true, ["sign", "verify"]);
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  publicJwk.kid = "oidc-test-key";
+  publicJwk.use = "sig";
+  publicJwk.alg = "RS256";
+
+  const makeIdToken = async (claims, signingKey = keyPair.privateKey) => {
+    const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "oidc-test-key" })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+    const signed = header + "." + payload;
+    const signature = await webcrypto.subtle.sign(
+      { name: "RSASSA-PKCS1-v1_5" },
+      signingKey,
+      new TextEncoder().encode(signed)
+    );
+    return signed + "." + Buffer.from(signature).toString("base64url");
+  };
+
+  const config = {
+    demo: {
+      label: "OIDC Demo",
+      clientId: "oidc-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile email",
+      pkce: true,
+      idField: "sub",
+      nameField: "name",
+      emailVerifiedField: "email_verified"
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+
+  const invalidConfig = env({
+    OAUTH_PROVIDERS_JSON: JSON.stringify({
+      demo: { ...config.demo, jwksUrl: "" }
+    })
+  });
+  const invalidProviders = await worker.fetch(request("/api/auth/providers"), invalidConfig);
+  assert.deepEqual((await body(invalidProviders)).providers, [], "OIDC config without JWKS must not be exposed");
+  const invalidPkceConfig = env({
+    OAUTH_PROVIDERS_JSON: JSON.stringify({
+      demo: { ...config.demo, pkce: false }
+    })
+  });
+  const invalidPkceProviders = await worker.fetch(request("/api/auth/providers"), invalidPkceConfig);
+  assert.deepEqual((await body(invalidPkceProviders)).providers, [], "OIDC config without PKCE must not be exposed");
+
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  assert.equal(start.status, 302);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const nonce = authorize.searchParams.get("nonce");
+  const stateCookie = cookieFrom(start);
+  assert.ok(state);
+  assert.ok(nonce, "OIDC authorization must include a fresh nonce");
+  assert.equal(authorize.searchParams.get("scope"), "openid profile email");
+  assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
+
+  const now = Math.floor(Date.now() / 1000);
+  const idToken = await makeIdToken({
+    iss: issuer,
+    aud: "oidc-client",
+    exp: now + 300,
+    iat: now,
+    sub: "oidc-subject-42",
+    nonce
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "oidc-access-token", id_token: idToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) {
+      return new Response(JSON.stringify({
+        sub: "oidc-subject-42",
+        name: "OIDC Test User",
+        email: "oidc@example.test",
+        email_verified: true
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    throw new Error("Unexpected OIDC test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=oidc-test-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    const location = new URL(callback.headers.get("Location"));
+    assert.equal(location.searchParams.get("oauth"), "success");
+    assert.equal(location.searchParams.get("provider"), "demo");
+    const sessionCookie = namedCookieFrom(callback, "allworld.sid");
+    assert.ok(sessionCookie);
+
+    const me = await worker.fetch(request("/api/auth/me", { headers: { Cookie: sessionCookie } }), bindings);
+    const meData = await body(me);
+    assert.equal(meData.user.email, "oidc@example.test");
+    const identity = bindings.AUTH_DB.db.prepare(
+      "SELECT user_id, provider_user_id FROM oauth_identities WHERE provider=?"
+    ).get("demo");
+    assert.equal(identity.provider_user_id, "oidc-subject-42");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM oauth_nonces").get().count, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("OIDC login rejects an invalid audience and never creates an account", async () => {
+  const authorizeUrl = "https://identity.example.test/authorize";
+  const tokenUrl = "https://identity.example.test/token";
+  const userInfoUrl = "https://identity.example.test/userinfo";
+  const jwksUrl = "https://identity.example.test/jwks";
+  const issuer = "https://identity.example.test";
+  const keyPair = await webcrypto.subtle.generateKey({
+    name: "RSASSA-PKCS1-v1_5",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256"
+  }, true, ["sign", "verify"]);
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  publicJwk.kid = "oidc-invalid-aud-key";
+  publicJwk.use = "sig";
+  publicJwk.alg = "RS256";
+  const config = {
+    demo: {
+      clientId: "expected-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const nonce = authorize.searchParams.get("nonce");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "oidc-invalid-aud-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "different-client",
+    exp: now + 300,
+    iat: now,
+    sub: "should-not-be-created",
+    nonce
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    keyPair.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const badIdToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "oidc-access-token", id_token: badIdToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) throw new Error("UserInfo must not be requested for an invalid ID token");
+    throw new Error("Unexpected OIDC test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=oidc-test-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth_error"), "login_failed");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 0);
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM oauth_identities").get().count, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+test("OIDC login rejects an ID token signed by a key outside the provider JWKS", async () => {
+  const authorizeUrl = "https://identity.example.test/authorize";
+  const tokenUrl = "https://identity.example.test/token";
+  const userInfoUrl = "https://identity.example.test/userinfo";
+  const jwksUrl = "https://identity.example.test/jwks";
+  const issuer = "https://identity.example.test";
+  const [trusted, attacker] = await Promise.all([
+    webcrypto.subtle.generateKey({
+      name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256"
+    }, true, ["sign", "verify"]),
+    webcrypto.subtle.generateKey({
+      name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256"
+    }, true, ["sign", "verify"])
+  ]);
+  const trustedJwk = await webcrypto.subtle.exportKey("jwk", trusted.publicKey);
+  Object.assign(trustedJwk, { kid: "trusted-key", use: "sig", alg: "RS256" });
+  const config = {
+    demo: {
+      clientId: "trusted-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const nonce = authorize.searchParams.get("nonce");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "trusted-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "trusted-client",
+    exp: now + 300,
+    iat: now,
+    sub: "forged-subject",
+    nonce
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    attacker.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const forgedToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "oidc-access-token", id_token: forgedToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [trustedJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) throw new Error("UserInfo must not be requested for an invalid signature");
+    throw new Error("Unexpected OIDC test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=oidc-test-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth_error"), "login_failed");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+test("OIDC ID-token verification supports ES256 with a P-256 JWKS key", async () => {
+  const authorizeUrl = "https://ecdsa.example.test/authorize";
+  const tokenUrl = "https://ecdsa.example.test/token";
+  const userInfoUrl = "https://ecdsa.example.test/userinfo";
+  const jwksUrl = "https://ecdsa.example.test/jwks";
+  const issuer = "https://ecdsa.example.test";
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"]
+  );
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  Object.assign(publicJwk, { kid: "ecdsa-test-key", use: "sig", alg: "ES256" });
+  const config = {
+    demo: {
+      clientId: "ecdsa-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const nonce = authorize.searchParams.get("nonce");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "ES256", typ: "JWT", kid: "ecdsa-test-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "ecdsa-client",
+    exp: now + 300,
+    iat: now,
+    sub: "ecdsa-subject-7",
+    nonce
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    keyPair.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const idToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "ecdsa-access-token", id_token: idToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) {
+      return new Response(JSON.stringify({ sub: "ecdsa-subject-7", name: "ECDSA User" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    throw new Error("Unexpected ES256 test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=ecdsa-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth"), "success");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT provider_user_id FROM oauth_identities WHERE provider=?").get("demo").provider_user_id, "ecdsa-subject-7");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+test("OIDC login rejects a signed ID token with the wrong nonce", async () => {
+  const authorizeUrl = "https://nonce.example.test/authorize";
+  const tokenUrl = "https://nonce.example.test/token";
+  const userInfoUrl = "https://nonce.example.test/userinfo";
+  const jwksUrl = "https://nonce.example.test/jwks";
+  const issuer = "https://nonce.example.test";
+  const keyPair = await webcrypto.subtle.generateKey({
+    name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256"
+  }, true, ["sign", "verify"]);
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  Object.assign(publicJwk, { kid: "nonce-test-key", use: "sig", alg: "RS256" });
+  const config = {
+    demo: {
+      clientId: "nonce-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "nonce-test-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "nonce-client",
+    exp: now + 300,
+    iat: now,
+    sub: "wrong-nonce-subject",
+    nonce: "not-the-issued-nonce"
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    keyPair.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const badIdToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "nonce-access-token", id_token: badIdToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) throw new Error("UserInfo must not be requested for a nonce mismatch");
+    throw new Error("Unexpected nonce test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=nonce-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth_error"), "login_failed");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

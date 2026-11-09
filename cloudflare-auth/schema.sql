@@ -57,3 +57,9 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at);
+CREATE TABLE IF NOT EXISTS oauth_nonces (
+  state_hash TEXT PRIMARY KEY,
+  nonce_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces(expires_at);
