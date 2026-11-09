@@ -321,6 +321,7 @@ test("OAuth providers are enabled only from valid server-side config and use a o
   };
   const bindings = env({
     API_PUBLIC_URL: "https://api.example.test",
+    AUTH_TEST_DIAGNOSTICS: "1",
     OAUTH_PROVIDERS_JSON: JSON.stringify(config)
   });
   const providerResponse = await worker.fetch(request("/api/auth/providers"), bindings);
