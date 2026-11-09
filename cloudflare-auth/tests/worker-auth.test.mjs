@@ -820,3 +820,85 @@ test("OIDC ID-token verification supports ES256 with a P-256 JWKS key", async ()
     globalThis.fetch = originalFetch;
   }
 });
+test("OIDC login rejects a signed ID token with the wrong nonce", async () => {
+  const authorizeUrl = "https://nonce.example.test/authorize";
+  const tokenUrl = "https://nonce.example.test/token";
+  const userInfoUrl = "https://nonce.example.test/userinfo";
+  const jwksUrl = "https://nonce.example.test/jwks";
+  const issuer = "https://nonce.example.test";
+  const keyPair = await webcrypto.subtle.generateKey({
+    name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256"
+  }, true, ["sign", "verify"]);
+  const publicJwk = await webcrypto.subtle.exportKey("jwk", keyPair.publicKey);
+  Object.assign(publicJwk, { kid: "nonce-test-key", use: "sig", alg: "RS256" });
+  const config = {
+    demo: {
+      clientId: "nonce-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      jwksUrl,
+      oidc: true,
+      oidcIssuer: issuer,
+      scopes: "openid profile",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const stateCookie = cookieFrom(start);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "nonce-test-key" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    aud: "nonce-client",
+    exp: now + 300,
+    iat: now,
+    sub: "wrong-nonce-subject",
+    nonce: "not-the-issued-nonce"
+  })).toString("base64url");
+  const signed = header + "." + payload;
+  const signature = await webcrypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    keyPair.privateKey,
+    new TextEncoder().encode(signed)
+  );
+  const badIdToken = signed + "." + Buffer.from(signature).toString("base64url");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      return new Response(JSON.stringify({ access_token: "nonce-access-token", id_token: badIdToken }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === jwksUrl) {
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) throw new Error("UserInfo must not be requested for a nonce mismatch");
+    throw new Error("Unexpected nonce test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=nonce-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth_error"), "login_failed");
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
