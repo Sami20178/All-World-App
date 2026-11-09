@@ -208,3 +208,16 @@ Der GitHub-CI-Workflow prüft die Konfiguration per Wrangler-Dry-Run. Der Live-P
 | [7Hazard/cf-hash-wasm](https://github.com/7Hazard/cf-hash-wasm) | NOASSERTION license status, last commit 2021-01-16, no releases. | Do not use. |
 
 No add-on was installed or copied. Next step: benchmark a maintained scrypt/Argon2id option in an isolated Worker with CPU, memory, DoS, and Unicode tests before changing production hashing.
+
+
+## Production drift audit (2026-11-09)
+
+The production Worker `all-world-auth-api` was compared with the current `main` source by reading the deployed Worker module through the Cloudflare API. The deployed module differs from the repository in two places: it has an additional `authStage = "register.password_hash";` diagnostic assignment, and its registration email check still permits an empty email. The source branch now preserves the diagnostic assignment while retaining the stricter server-side check that rejects a missing, malformed, or overlong email address. No password-hash algorithm or session behavior is changed by this source update.
+
+- Production deployment: `48823a4b-9ffd-47ff-be23-6070cc853fdf`, Worker version `91b33834-5905-4c5f-855b-35c6fd5339ad` (2026-10-31 21:28:10 UTC; 100% traffic).
+- Production bindings verified by name/type only: `APP_ORIGIN`, `AUTH_DB` (D1), and `RATE_LIMIT_SECRET`. Secret values were not read. `OAUTH_PROVIDERS_JSON` and a transactional email binding are absent.
+- Production D1 was inspected using SELECT-only queries: 7 application tables; 0 users, 0 sessions, 0 OAuth identities, and 0 OAuth states. The `users` table has no `email_verified` column; verification/reset-token tables are absent. No rows were written.
+- The live read-only smoke test [#42572805908](https://github.com/Sami20178/All-World-App/actions/runs/42572805908) passed `/api/health`, `/api/ready`, and provider discovery; it reported 0 configured OAuth providers. It did not exercise registration, login, logout, or browser cookies.
+- Production still uses PBKDF2-HMAC-SHA-256 with 310,000 iterations. Do not change the KDF as part of this email-validation fix. The separate preview KDF work in PRs [#18](https://github.com/Sami20178/All-World-App/pull/18) and [#19](https://github.com/Sami20178/All-World-App/pull/19) is not a production approval.
+
+**Deployment status:** this commit is source-only until the Worker is deployed and read back. No production Worker or D1 setting was changed in this audit. Before production deployment, use a controlled procedure that preserves the existing bindings and runtime settings, then verify the deployed module and run the read-only live smoke test. Email verification/password reset remain unavailable until a transactional mail service and token schema are implemented. Google, Apple, Microsoft, GitHub, and Roblox remain unconfigured; Supercell remains excluded.
