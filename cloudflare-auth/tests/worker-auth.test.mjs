@@ -389,7 +389,7 @@ test("OAuth providers are enabled only from valid server-side config and use a o
     ), bindings);
     assert.equal(callback.status, 302);
     const callbackLocation = new URL(callback.headers.get("Location"));
-    assert.equal(callbackLocation.searchParams.get("oauth"), "success");
+    assert.equal(callbackLocation.searchParams.get("oauth"), "success", "OAuth callback redirect: " + callbackLocation.toString());
     assert.equal(callbackLocation.searchParams.get("provider"), "demo");
     const cookies = cookiesFrom(callback);
     const sessionCookie = namedCookieFrom(callback, "allworld.sid");
