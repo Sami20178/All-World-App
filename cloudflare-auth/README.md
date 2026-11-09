@@ -314,3 +314,27 @@ Die offizielle [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owa
 Die offizielle [Cloudflare Workers Limits-Dokumentation](https://developers.cloudflare.com/workers/platform/limits/) (zuletzt aktualisiert 29.10.2026) nennt 10 ms CPU pro HTTP-Anfrage für Workers Free und bei Workers Paid standardmäßig 30 Sekunden, konfigurierbar bis 5 Minuten. Der verbundene Account zeigt einen Free-Website-Plan; ein separates Workers-Paid-Entitlement wurde nicht bestätigt. In den ausgelesenen Worker-Settings war kein eigenes cpu_ms-Limit vorhanden. Die tatsächliche Workers-Tarif-/CPU-Konfiguration muss vor der nächsten KDF-Entscheidung geklärt werden.
 
 **Keine Produktions-KDF-Änderung:** Der nächste Schritt bleibt ein isolierter synthetischer Benchmark im tatsächlichen Tarif mit CPU, Speicher, Parallelität, Passwortlängen, Hash-Migration und Rollback-Pfad. Keine echten Konten und keine Produktions-D1-Zeilen für Benchmarks verwenden. Die 100.000-Iterationen-Preview ist nicht produktionsfreigegeben.
+## Production/Preview Auth Audit – 2026-11-09
+
+### Current deployed state
+
+- Production Worker: `all-world-auth-api`, deployment `72a69a24-5178-4164-8c13-7af85012e921`, version `df4737b8-e4b2-44a4-a69a-798a8be2b2d9`, 100% traffic (2026-11-09 18:55:23 UTC).
+- Cloudflare content read-back of the active production script confirms `PBKDF2_ITERATIONS = 310000`. The deployed script contains no `PASSWORD_PEPPER` processing and no email-verification/password-reset token implementation.
+- Production binding names: `APP_ORIGIN`, `AUTH_DB`, `RATE_LIMIT_SECRET`. Secret values were not read. `PASSWORD_PEPPER` and `OAUTH_PROVIDERS_JSON` are not configured on production.
+- Read-only production D1 count query returned 0 users, 0 sessions, 0 OAuth identities, and 0 OAuth states. The query wrote no rows and did not change the database.
+- Live workflow [#42680920613](https://github.com/Sami20178/All-World-App/actions/runs/42680920613) passed health, readiness, and provider discovery; provider count was 0. It did not create or modify an account.
+- Isolated preview workflow [#42680920912](https://github.com/Sami20178/All-World-App/actions/runs/42680920912) passed health, readiness, anonymous protection, registration, session restoration, email login, invalid-password rejection, session rotation, logout, and account deletion. This was a separate preview Worker/D1, not production.
+
+### Password KDF release gate
+
+- Production PBKDF2-SHA-256/310,000 is a critical compatibility risk because a real isolated preview request previously failed when PBKDF2 exceeded 100,000 iterations; see [PR #18](https://github.com/Sami20178/All-World-App/pull/18). A production registration failure has not been reproduced with a real account.
+- The preview PBKDF2-SHA-512/100,000 plus pepper candidate passed its preview smoke, but is below OWASP's 220,000 recommendation for SHA-512 and is not approved for production.
+- [PR #19](https://github.com/Sami20178/All-World-App/pull/19) remains Draft and is behind current main. It adds `@noble/hashes@2.4.0` (MIT) only for test/benchmark use. The credentialed remote Worker benchmark did not run because the protected Actions secret `CLOUDFLARE_API_TOKEN` is not configured. Node.js benchmark results are not Worker runtime evidence.
+- Cloudflare documents 128 MiB isolate memory, 10 ms CPU per request on the Free model, and 30 seconds by default on the Paid model. The account's exact Workers usage tier was not verified. A real isolated Worker benchmark with CPU, memory, concurrency, rate-limit and DoS checks is required before choosing a production KDF. See [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html) and [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits/).
+
+### Still not available
+
+- No transactional email provider or verification/reset-token tables; email verification and password reset are not implemented.
+- `OAUTH_PROVIDERS_JSON` is absent; production discovery returns zero providers. Google, Apple, Microsoft, GitHub, and Roblox are not confirmed active. Supercell remains excluded.
+- The frontend still points to the Cloudflare Auth Worker. This Node.js/SQLite server is separate and is not confirmed as the public frontend auth endpoint.
+- No production account, password, D1 row, secret, OAuth provider, DNS record, or Worker configuration was changed during this audit.
