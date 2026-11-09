@@ -413,14 +413,13 @@ async function handleOAuthStart(request, env, db, slug) {
 }
 
 async function handleOAuthCallback(request, env, db, slug) {
-  let oauthStage = "state_validation";
   const config = parseOAuthProviders(env)[slug];
   const clearStateCookie = expiredOAuthStateCookie(slug);
   if (!config || !getAllowedOrigin(env)) {
     return oauthRedirect(env, { oauth_error: "provider_not_configured" }, [clearStateCookie]);
   }
   const publicApiOrigin = apiOrigin(request, env);
-  if (!publicApiOrigin) return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+  if (!publicApiOrigin) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
   const url = new URL(request.url);
   const state = url.searchParams.get("state") || "";
   const cookieState = cookieValue(request, oauthStateCookieName(slug));
@@ -443,7 +442,7 @@ async function handleOAuthCallback(request, env, db, slug) {
     return oauthRedirect(env, { oauth_error: "provider_denied" }, [clearStateCookie]);
   }
   if (!(await consumeRateLimit(request, env, "oauth-callback", slug, 30))) {
-    return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+    return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
   }
 
   if (flow.user_id) {
@@ -469,7 +468,6 @@ async function handleOAuthCallback(request, env, db, slug) {
     }
     if (flow.code_verifier) tokenBody.set("code_verifier", flow.code_verifier);
     tokenHeaders.set("Content-Type", "application/x-www-form-urlencoded");
-    oauthStage = "token_exchange";
     const tokenResponse = await fetch(config.tokenUrl, {
       method: "POST",
       headers: tokenHeaders,
@@ -479,7 +477,7 @@ async function handleOAuthCallback(request, env, db, slug) {
     });
     const tokenData = await tokenResponse.json().catch(() => ({}));
     if (!tokenResponse.ok || typeof tokenData.access_token !== "string" || !tokenData.access_token) {
-      return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
 
     const userInfoHeaders = new Headers({
@@ -487,7 +485,6 @@ async function handleOAuthCallback(request, env, db, slug) {
       "Accept": "application/json"
     });
     if (config.clientIdHeader) userInfoHeaders.set(config.clientIdHeader, config.clientId);
-    oauthStage = "user_info";
     const userInfoResponse = await fetch(config.userInfoUrl, {
       method: "GET",
       headers: userInfoHeaders,
@@ -496,16 +493,15 @@ async function handleOAuthCallback(request, env, db, slug) {
     });
     const userInfo = await userInfoResponse.json().catch(() => ({}));
     if (!userInfoResponse.ok || !userInfo || typeof userInfo !== "object" || Array.isArray(userInfo)) {
-      return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
     const profile = config.userInfoPath ? readOAuthField(userInfo, config.userInfoPath) : userInfo;
     if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
-      return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
-    oauthStage = "profile_validation";
     const providerUserId = readOAuthField(profile, config.idField) ?? readOAuthField(profile, "id") ?? readOAuthField(profile, "sub");
     if (providerUserId === undefined || providerUserId === null || !String(providerUserId) || String(providerUserId).length > 255) {
-      return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+      return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     }
     const providerUserIdText = String(providerUserId);
     const rawDisplayName = readOAuthField(profile, config.nameField) ?? readOAuthField(profile, "username") ?? slug;
@@ -518,7 +514,6 @@ async function handleOAuthCallback(request, env, db, slug) {
         return oauthRedirect(env, { oauth_error: "identity_already_linked" }, [clearStateCookie]);
       }
       if (!identity) {
-        oauthStage = "insert_identity";
         await db.prepare("INSERT INTO oauth_identities(provider,provider_user_id,user_id,display_name,created_at) VALUES(?,?,?,?,?)")
           .bind(slug, providerUserIdText, flow.user_id, displayName, new Date().toISOString()).run();
       }
@@ -546,7 +541,7 @@ async function handleOAuthCallback(request, env, db, slug) {
         const taken = await db.prepare("SELECT 1 AS ok FROM users WHERE username_normalized=?").bind(candidate.toLowerCase()).first();
         if (!taken) { username = candidate; break; }
       }
-      if (!username) return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+      if (!username) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
 
       let email = "";
       const candidateEmail = readOAuthField(profile, "email");
@@ -557,7 +552,6 @@ async function handleOAuthCallback(request, env, db, slug) {
         const takenEmail = await db.prepare("SELECT id FROM users WHERE email_normalized=?").bind(normalizedEmail).first();
         if (!takenEmail) email = candidateEmail.trim();
       }
-      authStage = "register.password_hash";
       const user = {
         id: crypto.randomUUID(),
         username,
@@ -567,7 +561,6 @@ async function handleOAuthCallback(request, env, db, slug) {
         password_hash: await hashPassword(randomToken(48)),
         created_at: new Date().toISOString()
       };
-      oauthStage = "insert_user";
       await db.prepare("INSERT INTO users(id,username,username_normalized,email,email_normalized,password_hash,created_at) VALUES(?,?,?,?,?,?,?)")
         .bind(user.id, user.username, user.username_normalized, user.email, user.email_normalized, user.password_hash, user.created_at).run();
       try {
@@ -584,14 +577,12 @@ async function handleOAuthCallback(request, env, db, slug) {
     }
 
     const linkedUser = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
-    if (!linkedUser) return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
-    oauthStage = "create_session";
+    if (!linkedUser) return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
     await revokeCurrentSession(request, env);
     const token = await createSession(env, userId);
     return oauthRedirect(env, { oauth: "success", provider: slug }, [clearStateCookie, sessionCookie(token)]);
-  } catch (error) {
-    if (env.AUTH_TEST_DIAGNOSTICS === "1") console.error("AUTH_OAUTH_STAGE", oauthStage, error?.name || "Error", String(error?.message || "").slice(0, 120));
-    return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
+  } catch {
+    return oauthRedirect(env, { oauth_error: "login_failed" }, [clearStateCookie]);
   }
 }
 
