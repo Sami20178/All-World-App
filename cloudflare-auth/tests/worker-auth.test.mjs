@@ -479,6 +479,13 @@ test("OIDC login validates the ID token signature, issuer, audience, subject and
   });
   const invalidProviders = await worker.fetch(request("/api/auth/providers"), invalidConfig);
   assert.deepEqual((await body(invalidProviders)).providers, [], "OIDC config without JWKS must not be exposed");
+  const invalidPkceConfig = env({
+    OAUTH_PROVIDERS_JSON: JSON.stringify({
+      demo: { ...config.demo, pkce: false }
+    })
+  });
+  const invalidPkceProviders = await worker.fetch(request("/api/auth/providers"), invalidPkceConfig);
+  assert.deepEqual((await body(invalidPkceProviders)).providers, [], "OIDC config without PKCE must not be exposed");
 
   const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
   assert.equal(start.status, 302);
