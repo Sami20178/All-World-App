@@ -590,7 +590,7 @@ async function handleOAuthCallback(request, env, db, slug) {
     const token = await createSession(env, userId);
     return oauthRedirect(env, { oauth: "success", provider: slug }, [clearStateCookie, sessionCookie(token)]);
   } catch (error) {
-    if (env.AUTH_TEST_DIAGNOSTICS === "1") console.error("AUTH_OAUTH_STAGE", oauthStage, error?.name || "Error");
+    if (env.AUTH_TEST_DIAGNOSTICS === "1") console.error("AUTH_OAUTH_STAGE", oauthStage, error?.name || "Error", String(error?.message || "").slice(0, 120));
     return oauthRedirect(env, { oauth_error: "login_failed", ...(env.AUTH_TEST_DIAGNOSTICS === "1" ? { debug_stage: oauthStage } : {}) }, [clearStateCookie]);
   }
 }
