@@ -253,3 +253,23 @@ The production Worker was updated from the current repository source after a rea
 - The Node.js/Express server is a separate component and is not confirmed as the production frontend API; the website points to the Cloudflare Auth Worker.
 
 Do not describe the account system as fully complete until production registration/login/session E2E, the production KDF, email verification/reset, and each actually configured OAuth provider have passed their own tests.
+
+
+## Production deployment follow-up — 2026-11-09
+
+Cloudflare read-back after the earlier drift audit now shows a new production deployment:
+
+- Worker: `all-world-auth-api`
+- Deployment: `72a69a24-5178-4164-8c13-7af85012e921`
+- Active version: `df4737b8-e4b2-44a4-a69a-798a8be2b2d9` (100% traffic)
+- Created: `2026-11-09T18:55:23Z`
+- Version metadata links to server commit `0202ccbd1b6263e6c8cea40a52c67cdaaa24755f` and records the message “Deploy source-main auth fixes: require registration email and remove OAuth callback ReferenceError”.
+- Binding names/types were read back only: `APP_ORIGIN` (HTTPS frontend origin), `AUTH_DB` (D1), and `RATE_LIMIT_SECRET` (secret). Secret values were not read. `OAUTH_PROVIDERS_JSON` and a transactional email binding remain absent.
+
+The deployed module read-back contains the required email guard (rejects missing, malformed, or overlong email) and does not contain the previous out-of-scope `authStage = "register.password_hash"` assignment. The callback has its own local diagnostic stage variable. The deployed module still uses PBKDF2-HMAC-SHA-256 with 310,000 iterations.
+
+**Verification boundary:** the deployment and active version were confirmed through Cloudflare's deployment/version API. The successful API-CI run [#42675741570](https://github.com/Sami20178/All-World-App/actions/runs/42675741570) completed before this deployment and is not a post-deploy smoke test. No HTTP registration/login/logout or browser-cookie test after this deployment is confirmed. The production account lifecycle must remain unverified until a post-deploy smoke test runs safely; do not create a real user account for testing.
+
+The KDF remains a release/security blocker: the project previously observed a Worker runtime failure above 100,000 PBKDF2 iterations in isolated preview diagnostics, while production still uses 310,000. The 100,000-iteration PBKDF2-SHA-512 preview candidate remains below the current OWASP PBKDF2-SHA-512 recommendation and is not approved for production. Do not lower the production work factor as a quick fix. Evaluate a Worker-compatible Argon2id/scrypt implementation or a managed auth service with real runtime, memory, concurrency, and migration tests before changing password storage.
+
+Email verification, password reset, and external OAuth remain unavailable until the required token schema, transactional mail service, provider configuration, and end-to-end tests exist.
