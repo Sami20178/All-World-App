@@ -113,3 +113,14 @@ The existing flow uses a one-time random state stored hashed in D1, an HttpOnly/
 - [Roblox OAuth 2.0 overview](https://create.roblox.com/docs/cloud/auth/oauth2-overview) · [Roblox OAuth 2.0 reference](https://create.roblox.com/docs/cloud/auth/oauth2-reference)
 
 **Geprüft:** 09.11.2026. Die Links belegen die offiziellen Protokollanforderungen, nicht eine aktive All-World-Provider-Konfiguration.
+## OIDC-ID-Token-Prüfung – Implementierung auf Branch, noch nicht produktiv
+
+Der Branch `automation/oidc-id-token-validation-2026-11-09` ergänzt eine optionale OIDC-Prüfung für generische Provider:
+
+- Konfiguration nur mit `oidc: true`, HTTPS-`oidcIssuer`, HTTPS-`jwksUrl` und Scope `openid`.
+- Der Start erzeugt eine eigene kryptografische Nonce; in D1 wird nur ihr SHA-256-Hash in `oauth_nonces` gespeichert. Die Nonce wird einmalig verbraucht.
+- Der Callback verlangt ein `id_token`, prüft dessen RS256- oder ES256-Signatur gegen den konfigurierten JWKS-Endpunkt und kontrolliert Issuer, Audience, `azp`, Ablaufzeit, `iat`, `nbf`, `sub` und Nonce.
+- Die UserInfo-`sub` muss mit der verifizierten ID-Token-`sub` übereinstimmen. Fehlerhafte Token werden vor dem Anlegen eines Kontos abgewiesen.
+- Tests decken gültigen Login, fehlende JWKS-Konfiguration, falsche Audience und Signatur mit einem nicht vertrauenswürdigen Schlüssel ab.
+
+**Statusgrenze:** Diese Implementierung liegt nur auf dem genannten Branch. Sie ist weder in Main gemergt noch auf Preview oder Produktion deployed. Es sind weiterhin 0 OAuth-Provider konfiguriert. ES256, JWKS-Key-Rotation/Cache-Verhalten und echte Provider-Callbacks benötigen zusätzliche Tests. Apple bleibt wegen des signierten Client-Secret-JWTs ein separater Adapter; GitHub bleibt OAuth 2.0.
