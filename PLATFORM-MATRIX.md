@@ -74,3 +74,26 @@ Die Web/PWA-Quelle ist vorhanden; Offline-, Browser-, Barrierefreiheits- und res
 | Nintendo Switch / Wii U / Wii / GameCube | nicht gebaut | Keine legale, getestete Portierung oder Hardwareprüfung. |
 
 Server-Main `fa9c4b4` und Team-Server-Main `3c1c42c` bestanden ihre aktuellen Node-, API-CI- und Auth/MCP-Smoke-Workflows. Kein App-Release erstellt.
+
+ 
+## Aktueller Prüfstand – 2026-11-09, 20:19 CET
+
+| Plattform | Status | Aktueller Nachweis | Nächster Schritt |
+|---|---|---|---|
+| Node.js API / Server | Code im Upstream und Team-Mirror vorhanden; Produktions-Node-Deployment nicht bestätigt | server.js und tests/smoke-test.js stimmen per Blob-SHA mit Team-Server überein. Der separate Cloudflare Auth Worker ist aktiv. | Node.js-Hosting und produktiven API-Endpunkt getrennt nachweisen. |
+| Auth-Worker | Version 6 deployed; eingeschränkte Live-Smokes bestanden | Deployment 72a69a24-5178-4164-8c13-7af85012e921, Version df4737b8-e4b2-44a4-a69a-798a8be2b2d9, 100 % Traffic, Commit 0202ccbd1b6263e6c8cea40a52c67cdaaa24755f. Health/Readiness/Provider-Discovery bestanden, 0 OAuth-Anbieter. | Produktions-Account-Lifecycle und Browser-Cookie-Test; KDF-Runtime-Kompatibilität lösen. |
+| MCP-Worker | Version 30 deployed; kein neuer Smoke nach diesem Upload | Deployment 2a0ad88d-beaa-495e-bce8-f8844f9d5d39, Version eb1e0c3d-4d6c-4965-9fff-a9b3b28eff12, 100 % Traffic; OAUTH_DB-Binding. Keine Commit-Annotation. | Quelle/Commit zuordnen und sicheren HTTP-Smoke ausführen. |
+| Web / Frontend | Separater Website-Worker deployed; Live-Inhalt nicht unabhängig bestätigt | Website-Version 335 / Deployment da11e856-b3a3-47b6-98f5-1a711429eb85, 100 % Traffic, ohne GitHub-Commit-Annotation. | Deployment-Quelle zuordnen und Website-/docc-Live-HTTP-Prüfung wiederholen. |
+| PWA | Dateien vorhanden; Installation/Offline nicht getestet | Kein aktueller Browser-/Gerätetest. | Installations- und Offline-Test. |
+| Android | Kein neues Release-APK-Asset; kein physischer Gerätetest | Debug-Builds sind nicht mit einem Release gleichzusetzen. | Abrufbare APK bauen, Signatur prüfen und reale Kernfunktionen testen. |
+| Fire OS | Geplant, nicht getestet | Fire HD 8/10/Fire Max nicht auf Hardware getestet. | Dieselbe Android-APK auf realen Fire-Geräten testen. |
+| Windows / macOS / Linux | Nicht gebaut/getestet | Keine Desktop-Artefakte nachgewiesen. | Plattformgerechte Hülle, Runner, Paketierung und Starttests. |
+| iOS/iPadOS | Blockiert/nicht gebaut | Xcode, Apple-Zertifikate und Provisioning nicht nachgewiesen. | Autorisierte Apple-Build- und Signierumgebung. |
+| Nintendo Switch / Wii U / Wii / GameCube | Keine Portierung gebaut/getestet | Kein eigenes Konsolenartefakt oder Hardwaretest. | Separate legale Machbarkeitsprüfung. |
+
+### Sicherheits- und Release-Grenzen
+
+- Produktions-Auth nutzt weiterhin PBKDF2-HMAC-SHA-256 mit 310.000 Iterationen. Die zuvor beobachtete Worker-Runtime-Grenze oberhalb von 100.000 Iterationen bleibt ein Kompatibilitätsrisiko; die 100.000-Iterationen-Preview ist nicht produktionsfreigegeben.
+- Produktions-Smokes prüften Health, Readiness und Provider-Discovery und meldeten 0 OAuth-Anbieter. Der synthetische Account-E2E lief auf isolierter Preview, nicht auf Produktion.
+- PR #19 für einen isolierten KDF-Benchmark bleibt Draft und nicht mergebar; der Remote-Worker-Benchmark wurde nicht ausgeführt.
+- Nächste freie gemeinsame Version bleibt First Classic 0.0.0.0. Keine APK, kein Tag und kein Release erstellt.
