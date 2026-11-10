@@ -909,3 +909,110 @@ test("OIDC login rejects a signed ID token with the wrong nonce", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("OAuth registration never links an unverified provider email to an existing account", async () => {
+  const authorizeUrl = "https://identity.example.test/authorize";
+  const tokenUrl = "https://identity.example.test/token";
+  const userInfoUrl = "https://identity.example.test/userinfo";
+  const config = {
+    demo: {
+      label: "Unverified Email Demo",
+      clientId: "demo-client",
+      clientSecret: "test-only-secret",
+      authorizeUrl,
+      tokenUrl,
+      userInfoUrl,
+      scopes: "profile email",
+      idField: "sub",
+      nameField: "name",
+      emailVerifiedField: "email_verified",
+      pkce: true
+    }
+  };
+  const bindings = env({
+    API_PUBLIC_URL: "https://api.example.test",
+    OAUTH_PROVIDERS_JSON: JSON.stringify(config)
+  });
+
+  const existingRegistration = await worker.fetch(request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      username: "existing_email_owner",
+      email: "taken@example.test",
+      password: "Existing-test-password!"
+    })
+  }), bindings);
+  assert.equal(existingRegistration.status, 201);
+  const existingUser = (await body(existingRegistration)).user;
+
+  const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
+  assert.equal(start.status, 302);
+  const authorize = new URL(start.headers.get("Location"));
+  const state = authorize.searchParams.get("state");
+  const stateCookie = cookieFrom(start);
+  assert.ok(state);
+  assert.ok(stateCookie.startsWith("allworld.oauth.demo="));
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const target = String(input);
+    if (target === tokenUrl) {
+      const form = new URLSearchParams(init.body);
+      assert.equal(form.get("client_id"), "demo-client");
+      assert.ok(form.get("code_verifier"), "PKCE verifier must be sent to the token endpoint");
+      return new Response(JSON.stringify({ access_token: "unverified-email-access-token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (target === userInfoUrl) {
+      const headers = new Headers(init.headers);
+      assert.equal(headers.get("authorization"), "Bearer unverified-email-access-token");
+      return new Response(JSON.stringify({
+        sub: "unverified-provider-subject",
+        name: "Unverified Provider User",
+        email: "taken@example.test",
+        email_verified: false
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    throw new Error("Unexpected unverified-email test fetch URL");
+  };
+
+  try {
+    const callback = await worker.fetch(request(
+      "/api/auth/oauth/demo/callback?code=unverified-email-code&state=" + encodeURIComponent(state),
+      { headers: { Cookie: stateCookie } }
+    ), bindings);
+    assert.equal(callback.status, 302);
+    assert.equal(new URL(callback.headers.get("Location")).searchParams.get("oauth"), "success");
+
+    const sessionCookie = namedCookieFrom(callback, "allworld.sid");
+    assert.ok(sessionCookie, "OAuth signup must create a session for its new identity");
+    const me = await worker.fetch(request("/api/auth/me", {
+      headers: { Cookie: sessionCookie }
+    }), bindings);
+    const oauthUser = (await body(me)).user;
+
+    assert.ok(oauthUser);
+    assert.notEqual(oauthUser.id, existingUser.id, "an unverified email must never link to an existing account");
+    assert.equal(oauthUser.email, null, "an unverified provider email must not be stored as verified account email");
+
+    const storedOwner = bindings.AUTH_DB.db.prepare(
+      "SELECT email_normalized FROM users WHERE id=?"
+    ).get(existingUser.id);
+    assert.equal(storedOwner.email_normalized, "taken@example.test");
+
+    const identity = bindings.AUTH_DB.db.prepare(
+      "SELECT user_id FROM oauth_identities WHERE provider=? AND provider_user_id=?"
+    ).get("demo", "unverified-provider-subject");
+    assert.equal(identity.user_id, oauthUser.id);
+    assert.notEqual(identity.user_id, existingUser.id);
+    assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
