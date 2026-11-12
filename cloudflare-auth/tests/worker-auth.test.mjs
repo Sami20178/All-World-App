@@ -1016,3 +1016,79 @@ test("OAuth registration never links an unverified provider email to an existing
   }
 });
 
+
+
+test("login endpoint enforces the per-identifier attempt limit before password verification", async () => {
+  const bindings = env();
+  const ip = "192.0.2.70";
+  const identifier = "blocked@example.test";
+  const secretKey = await webcrypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(bindings.RATE_LIMIT_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const digest = await webcrypto.subtle.sign(
+    "HMAC",
+    secretKey,
+    new TextEncoder().encode(ip + "|login-identifier|" + identifier.toLowerCase())
+  );
+  const keyHash = Buffer.from(digest).toString("base64url");
+
+  await worker.fetch(request("/api/health"), bindings);
+  bindings.AUTH_DB.db.prepare(
+    "INSERT INTO auth_rate_limits(key_hash, window_start, count) VALUES(?,?,?)"
+  ).run(keyHash, Date.now(), 10);
+
+  const response = await worker.fetch(request("/api/auth/login", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify({ username: identifier, password: "wrong-password" })
+  }), bindings);
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "900");
+  assert.equal(
+    bindings.AUTH_DB.db.prepare("SELECT count FROM auth_rate_limits WHERE key_hash=?").get(keyHash).count,
+    11,
+    "the rejected attempt must still advance the persistent rate-limit counter"
+  );
+});
+
+test("login endpoint enforces the per-IP attempt limit across different identifiers", async () => {
+  const bindings = env();
+  const ip = "192.0.2.71";
+  const secretKey = await webcrypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(bindings.RATE_LIMIT_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const digest = await webcrypto.subtle.sign(
+    "HMAC",
+    secretKey,
+    new TextEncoder().encode(ip + "|login-ip|")
+  );
+  const keyHash = Buffer.from(digest).toString("base64url");
+
+  await worker.fetch(request("/api/health"), bindings);
+  bindings.AUTH_DB.db.prepare(
+    "INSERT INTO auth_rate_limits(key_hash, window_start, count) VALUES(?,?,?)"
+  ).run(keyHash, Date.now(), 40);
+
+  const response = await worker.fetch(request("/api/auth/login", {
+    method: "POST",
+    headers: { "CF-Connecting-IP": ip },
+    body: JSON.stringify({ username: "different@example.test", password: "wrong-password" })
+  }), bindings);
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "900");
+  assert.equal(
+    bindings.AUTH_DB.db.prepare("SELECT count FROM auth_rate_limits WHERE key_hash=?").get(keyHash).count,
+    41,
+    "the IP-level counter must remain persistent across different account identifiers"
+  );
+});
