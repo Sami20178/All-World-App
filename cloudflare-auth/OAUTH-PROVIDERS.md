@@ -126,7 +126,7 @@ Der Branch `automation/oidc-id-token-validation-2026-11-09` ergänzt eine option
 **Statusgrenze:** Diese Implementierung liegt nur auf dem genannten Branch. Sie ist weder in Main gemergt noch auf Preview oder Produktion deployed. Es sind weiterhin 0 OAuth-Provider konfiguriert. ES256, JWKS-Key-Rotation/Cache-Verhalten und echte Provider-Callbacks benötigen zusätzliche Tests. Apple bleibt wegen des signierten Client-Secret-JWTs ein separater Adapter; GitHub bleibt OAuth 2.0.
 ### Ergänzung: PKCE ist für OIDC verpflichtend
 
-OIDC-Provider werden nur akzeptiert, wenn `pkce` nicht ausdrücklich deaktiviert wurde. Konfigurationen mit `oidc: true` und `pkce: false` werden aus der Providerliste ausgeschlossen. Die Branch-Tests decken zusätzlich ES256/P-256, falsche Nonce, ungültige Audience, einen nicht vertrauenswürdigen Signaturschlüssel sowie fehlende JWKS-/PKCE-Konfiguration ab. Der aktuelle Branch ist noch nicht gemergt oder deployed.
+OIDC-Provider werden nur akzeptiert, wenn `pkce: true` ausdrücklich gesetzt ist. Fehlende und auf `false` gesetzte Werte werden aus der Providerliste ausgeschlossen. Die Branch-Tests decken zusätzlich ES256/P-256, falsche Nonce, ungültige Audience, einen nicht vertrauenswürdigen Signaturschlüssel sowie fehlende JWKS-/PKCE-Konfiguration ab. Der aktuelle Branch ist noch nicht gemergt oder deployed.
 ## Statuskorrektur 09.11.2026, 20:07 UTC – OIDC-Prüfung ist in Main
 
 Die optionale OIDC-ID-Token-Prüfung wurde mit [Server-Commit `4a2be3c`](https://github.com/Sami20178/All-World-App/commit/4a2be3c1939d14d97964274761bdfa8ddd2b24c9) in `main` gemergt. Der frühere Abschnitt „nur auf Branch“ beschreibt den Stand vor diesem Merge.
