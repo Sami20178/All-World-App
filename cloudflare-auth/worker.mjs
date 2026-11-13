@@ -309,7 +309,7 @@ function parseOAuthProviders(env) {
     const oidc = item.oidc === true;
     const oidcIssuer = oidc ? secureHttpsIssuer(item.oidcIssuer) : "";
     const jwksUrl = oidc ? secureHttpsUrl(item.jwksUrl) : "";
-    if (oidc && (!oidcIssuer || !jwksUrl || !scopes.split(/\s+/).includes("openid") || item.pkce === false)) continue;
+    if (oidc && (!oidcIssuer || !jwksUrl || !scopes.split(/\s+/).includes("openid") || item.pkce !== true)) continue;
     const label = typeof item.label === "string" && item.label.trim().length <= 60 ? item.label.trim() : slug;
     const clientAuthMethod = item.clientAuthMethod === "basic" ? "basic" : "body";
     const extraAuthorizeParams = {};

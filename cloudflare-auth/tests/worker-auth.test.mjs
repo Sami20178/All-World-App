@@ -487,6 +487,14 @@ test("OIDC login validates the ID token signature, issuer, audience, subject and
   const invalidPkceProviders = await worker.fetch(request("/api/auth/providers"), invalidPkceConfig);
   assert.deepEqual((await body(invalidPkceProviders)).providers, [], "OIDC config without PKCE must not be exposed");
 
+  const missingPkceProvider = { ...config.demo };
+  delete missingPkceProvider.pkce;
+  const missingPkceConfig = env({
+    OAUTH_PROVIDERS_JSON: JSON.stringify({ demo: missingPkceProvider })
+  });
+  const missingPkceProviders = await worker.fetch(request("/api/auth/providers"), missingPkceConfig);
+  assert.deepEqual((await body(missingPkceProviders)).providers, [], "OIDC config must explicitly enable PKCE");
+
   const start = await worker.fetch(request("/api/auth/oauth/demo"), bindings);
   assert.equal(start.status, 302);
   const authorize = new URL(start.headers.get("Location"));
