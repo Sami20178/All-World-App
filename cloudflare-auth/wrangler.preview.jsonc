@@ -13,7 +13,8 @@
     {
       "binding": "AUTH_DB",
       "database_name": "all-world-auth-preview",
-      "database_id": "79a0bdac-004d-4fde-becf-d9beb1fc31e5"
+      "database_id": "79a0bdac-004d-4fde-becf-d9beb1fc31e5",
+      "migrations_dir": "./migrations"
     }
   ]
 }
