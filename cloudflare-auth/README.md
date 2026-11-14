@@ -314,13 +314,3 @@ Die offizielle [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owa
 Die offizielle [Cloudflare Workers Limits-Dokumentation](https://developers.cloudflare.com/workers/platform/limits/) (zuletzt aktualisiert 29.10.2026) nennt 10 ms CPU pro HTTP-Anfrage für Workers Free und bei Workers Paid standardmäßig 30 Sekunden, konfigurierbar bis 5 Minuten. Der verbundene Account zeigt einen Free-Website-Plan; ein separates Workers-Paid-Entitlement wurde nicht bestätigt. In den ausgelesenen Worker-Settings war kein eigenes cpu_ms-Limit vorhanden. Die tatsächliche Workers-Tarif-/CPU-Konfiguration muss vor der nächsten KDF-Entscheidung geklärt werden.
 
 **Keine Produktions-KDF-Änderung:** Der nächste Schritt bleibt ein isolierter synthetischer Benchmark im tatsächlichen Tarif mit CPU, Speicher, Parallelität, Passwortlängen, Hash-Migration und Rollback-Pfad. Keine echten Konten und keine Produktions-D1-Zeilen für Benchmarks verwenden. Die 100.000-Iterationen-Preview ist nicht produktionsfreigegeben.
-
-## Versioned D1 migration for email verification and password reset
-
-The migration sequence has an explicit baseline and an additive upgrade:
-- `migrations/0001_initial.sql` mirrors the existing schema and uses `CREATE TABLE IF NOT EXISTS`.
-- `migrations/0002_email_verification_and_password_reset.sql` adds nullable `users.email_verified_at` plus separate email-verification and password-reset token tables.
-- Only SHA-256 token hashes are stored. The schema has no raw-token columns. Both token types have expiry, creation and one-time consumption timestamps, foreign-key cleanup, expiry indexes, and a single-active-token constraint.
-- The migration test uses an in-memory SQLite database, inserts an existing user and session before applying 0002, then verifies those rows survive, the new constraints work, and account deletion cascades to token rows.
-
-The preview Wrangler D1 binding now points to `./migrations`. CI runs the migration test. This is schema preparation only: no migration has been applied to preview or production, no Worker endpoint has been added, and no email provider is configured. Verification-email and password-reset delivery remain unimplemented until a real provider and server-side mail adapter are configured and tested.
