@@ -1,0 +1,34 @@
+name: Auth migration validation
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare-auth/migrations/**"
+      - "cloudflare-auth/tests/migration-auth-tokens.test.mjs"
+      - "cloudflare-auth/wrangler.preview.jsonc"
+      - ".github/workflows/auth-migration-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare-auth/migrations/**"
+      - "cloudflare-auth/tests/migration-auth-tokens.test.mjs"
+      - "cloudflare-auth/wrangler.preview.jsonc"
+      - ".github/workflows/auth-migration-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install repository dependencies
+        run: npm install --no-audit --no-fund
+      - name: Test additive migration invariants
+        run: node --test cloudflare-auth/tests/migration-auth-tokens.test.mjs
+      - name: Apply versioned migrations to ephemeral local D1
+        run: npx --yes wrangler@4 d1 migrations apply all-world-auth-preview --local --config cloudflare-auth/wrangler.preview.jsonc
