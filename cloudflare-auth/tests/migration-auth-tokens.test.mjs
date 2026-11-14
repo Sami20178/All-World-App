@@ -15,7 +15,7 @@ test("email verification and password reset migration is additive and preserves 
   db.pragma("foreign_keys = ON");
   try {
     const legacySql = initialSql.replace(
-      /CREATE TABLE IF NOT EXISTS oauth_nonces \([\s\S]*?\);\s*CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces\(expires_at\);/
+      /CREATE TABLE IF NOT EXISTS oauth_nonces \([\s\S]*?\);\s*CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces\(expires_at\);/,
       ""
     );
     assert.notEqual(legacySql, initialSql, "baseline migration must include the missing oauth_nonces table");
