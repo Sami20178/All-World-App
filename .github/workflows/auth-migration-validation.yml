@@ -31,4 +31,4 @@ jobs:
       - name: Test additive migration invariants
         run: node --test cloudflare-auth/tests/migration-auth-tokens.test.mjs
       - name: Apply versioned migrations to ephemeral local D1
-        run: npx --yes wrangler@4 d1 migrations apply all-world-auth-preview --local --config cloudflare-auth/wrangler.preview.jsonc --yes
+        run: npx --yes wrangler@4 d1 migrations apply all-world-auth-preview --local --config cloudflare-auth/wrangler.preview.jsonc
