@@ -14,7 +14,12 @@ test("email verification and password reset migration is additive and preserves 
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
   try {
-    db.exec(initialSql);
+    const legacySql = initialSql.replace(
+      /CREATE TABLE IF NOT EXISTS oauth_nonces \([\\s\\S]*?\\);\\s*CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces\\(expires_at\\);/,
+      ""
+    );
+    assert.notEqual(legacySql, initialSql, "baseline migration must include the missing oauth_nonces table");
+    db.exec(legacySql);
     const now = Date.now();
     db.prepare(`
       INSERT INTO users (
@@ -24,8 +29,11 @@ test("email verification and password reset migration is additive and preserves 
     db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
       .run("session-hash", "user-1", now + 60_000, now);
 
+    db.exec(initialSql); // Apply baseline to an existing database; missing objects are added, existing rows remain.
     db.exec(upgradeSql);
 
+    const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
+    assert.ok(tables.has("oauth_nonces"));
     const columns = db.pragma("table_info(users)").map(column => column.name);
     assert.ok(columns.includes("email_verified_at"));
     assert.equal(columns.includes("email_verification_token"), false);
@@ -38,7 +46,6 @@ test("email verification and password reset migration is additive and preserves 
     assert.equal(user.password_hash, "pbkdf2$test$hash");
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=?").get("user-1").count, 1);
 
-    const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
     assert.ok(tables.has("email_verification_tokens"));
     assert.ok(tables.has("password_reset_tokens"));
 
