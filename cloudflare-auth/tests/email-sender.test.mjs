@@ -98,7 +98,7 @@ test("rejects invalid recipients, unknown message types, and unsafe links before
     { ...base, to: "not-an-email" },
     { ...base, to: 12345 },
     { ...base, url: APP_ORIGIN + "/" + "x".repeat(2050) },
-    { ...base, username: "bad\\nname" },
+    { ...base, username: "bad\nname" },
     { ...base, type: "marketing" },
     { ...base, url: "http://app.example.test/account/verify" },
     { ...base, url: "https://evil.example/account/verify" },
