@@ -1,7 +1,7 @@
 const MAILER_URL = "https://mailer.internal/send";
 const MAILER_CONTRACT = "all-world-auth-email-v1";
 const MAX_PAYLOAD_BYTES = 16 * 1024;
-const EMAIL_PATTERN = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -33,9 +33,9 @@ export function hasEmailSender(env) {
 
 function buildMessage(env, { type, to, username, url }) {
   if (!hasEmailSender(env)) return null;
-  if (!EMAIL_PATTERN.test(String(to || "")) || String(to).length > 254) return null;
-  if (!isSameOriginHttpsUrl(url, env.APP_ORIGIN)) return null;
-  if (typeof username !== "string" || username.length > 32) return null;
+  if (typeof to !== "string" || to !== to.trim() || !EMAIL_PATTERN.test(to) || to.length > 254) return null;
+  if (typeof url !== "string" || url.length > 2048 || !isSameOriginHttpsUrl(url, env.APP_ORIGIN)) return null;
+  if (typeof username !== "string" || username.length > 32 || /[\r\n\u0000-\u001f]/.test(username)) return null;
 
   const safeName = username ? escapeHtml(username) : "";
   const greetingText = username ? `Hallo ${username},` : "Hallo,";
