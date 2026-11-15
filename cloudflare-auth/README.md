@@ -314,3 +314,21 @@ Die offizielle [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owa
 Die offizielle [Cloudflare Workers Limits-Dokumentation](https://developers.cloudflare.com/workers/platform/limits/) (zuletzt aktualisiert 29.10.2026) nennt 10 ms CPU pro HTTP-Anfrage für Workers Free und bei Workers Paid standardmäßig 30 Sekunden, konfigurierbar bis 5 Minuten. Der verbundene Account zeigt einen Free-Website-Plan; ein separates Workers-Paid-Entitlement wurde nicht bestätigt. In den ausgelesenen Worker-Settings war kein eigenes cpu_ms-Limit vorhanden. Die tatsächliche Workers-Tarif-/CPU-Konfiguration muss vor der nächsten KDF-Entscheidung geklärt werden.
 
 **Keine Produktions-KDF-Änderung:** Der nächste Schritt bleibt ein isolierter synthetischer Benchmark im tatsächlichen Tarif mit CPU, Speicher, Parallelität, Passwortlängen, Hash-Migration und Rollback-Pfad. Keine echten Konten und keine Produktions-D1-Zeilen für Benchmarks verwenden. Die 100.000-Iterationen-Preview ist nicht produktionsfreigegeben.
+
+
+## Transactional email sender adapter — contract prepared, not configured (2026-11-15)
+
+The new `email-sender.mjs` module defines a vendor-neutral interface for a **private Cloudflare Worker Service Binding** named `EMAIL_SENDER`. It is deliberately not connected to the authentication routes yet.
+
+- The caller invokes the binding at the internal URL `https://mailer.internal/send`; this URL is a service-binding request target, not a public provider endpoint.
+- The binding receives the contract header `X-All-World-Mailer-Contract: all-world-auth-email-v1` and a versioned JSON payload.
+- Delivery actions are restricted to `verification` and `password-reset`; links must be HTTPS and match the configured `APP_ORIGIN`.
+- The mailer must return HTTP `202 Accepted` only after safely queueing the message. The adapter does not expose provider response bodies or log recipients, links, or tokens.
+- Unknown-account flows can send a recipient-free `suppress` action so the same internal service path can be used without sending a message. The mailer must treat this as a no-op and return 202.
+- HTML names are escaped, the request body is capped at 16 KiB, and no provider secret is passed from the Auth Worker.
+
+**Current availability:** Cloudflare confirms that Service Bindings can call another Worker without exposing it to a public URL ([Cloudflare Service Bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/)). No `EMAIL_SENDER` binding or transactional email provider is configured on the production or preview Auth Worker. The adapter is therefore a tested contract only; email verification and password reset endpoints are still unavailable and are not claimed as implemented.
+
+**Next gate:** implement token routes against migration 0002, create and review a separate mailer Worker, configure a private Service Binding and provider secrets there, then apply migration 0002 through Wrangler's versioned migration workflow on the isolated preview D1 and run preview end-to-end tests. Do not apply SQL manually or deploy the new Auth Worker before the preview gate passes.
+
+Security references: [OWASP Email Validation and Verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP Forgot Password](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), and [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/wrangler-commands/). Checked 2026-11-15.
