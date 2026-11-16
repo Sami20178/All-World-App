@@ -66,6 +66,8 @@ test("queues a verification message through the private service binding", async 
   assert.equal(call.body.to, "user@example.test");
   assert.match(call.body.html, /&lt;Sam&gt; &amp; Co/);
   assert.match(call.body.text, /https:\/\/app\.example\.test\/account\/verify\?token=opaque-token/);
+  assert.ok(call.body.text.includes("\n\n"), "plain-text verification email should use actual line breaks");
+  assert.equal(call.body.text.includes("\\n"), false, "plain-text email must not contain literal backslash-n sequences");
   assert.equal(JSON.stringify(result).includes("opaque-token"), false);
 });
 
