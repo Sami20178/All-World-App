@@ -49,7 +49,7 @@ function buildMessage(env, { type, to, username, url }) {
       type,
       to,
       subject: "Bestätige deine All World E-Mail-Adresse",
-      text: `${greetingText}\\n\\nBitte bestätige deine E-Mail-Adresse über diesen sicheren Link:\\n${url}\\n\\nDer Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du kein Konto erstellt hast, kannst du diese Nachricht ignorieren.`,
+      text: `${greetingText}\n\nBitte bestätige deine E-Mail-Adresse über diesen sicheren Link:\n${url}\n\nDer Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du kein Konto erstellt hast, kannst du diese Nachricht ignorieren.`,
       html: `<p>${greetingHtml}</p><p>Bitte bestätige deine E-Mail-Adresse über diesen sicheren Link:</p><p><a href="${safeUrl}">E-Mail-Adresse bestätigen</a></p><p>Der Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du kein Konto erstellt hast, kannst du diese Nachricht ignorieren.</p>`
     };
   }
@@ -61,7 +61,7 @@ function buildMessage(env, { type, to, username, url }) {
       type,
       to,
       subject: "Setze dein All World Passwort zurück",
-      text: `${greetingText}\\n\\nDu kannst dein Passwort über diesen sicheren Link zurücksetzen:\\n${url}\\n\\nDer Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du die Zurücksetzung nicht angefordert hast, kannst du diese Nachricht ignorieren.`,
+      text: `${greetingText}\n\nDu kannst dein Passwort über diesen sicheren Link zurücksetzen:\n${url}\n\nDer Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du die Zurücksetzung nicht angefordert hast, kannst du diese Nachricht ignorieren.`,
       html: `<p>${greetingHtml}</p><p>Du kannst dein Passwort über diesen sicheren Link zurücksetzen:</p><p><a href="${safeUrl}">Passwort zurücksetzen</a></p><p>Der Link ist nur einmal verwendbar und läuft zeitnah ab. Wenn du die Zurücksetzung nicht angefordert hast, kannst du diese Nachricht ignorieren.</p>`
     };
   }
