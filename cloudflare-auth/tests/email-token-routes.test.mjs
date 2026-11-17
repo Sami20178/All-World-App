@@ -122,23 +122,42 @@ test("required email verification sends a one-time token and gates login until c
   assert.equal(tokenRow.token_hash, await sha256(token));
   assert.notEqual(tokenRow.token_hash, token, "only a token hash may be stored");
 
-  const blockedLogin = await worker.fetch(request("/api/auth/login", {
+  const restrictedLogin = await worker.fetch(request("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ username: "verify@example.test", password: "A-long-test-password!" }),
     ip: "192.0.2.41"
   }), bindings);
-  assert.equal(blockedLogin.status, 403);
+  assert.equal(restrictedLogin.status, 200);
+  const restrictedBody = await body(restrictedLogin);
+  assert.equal(restrictedBody.user.emailVerified, false);
+  assert.equal(restrictedBody.emailVerificationRequired, true);
 
-  const cookie = cookieFrom(registered);
+  const cookie = cookieFrom(restrictedLogin);
   const blockedAccount = await worker.fetch(request("/api/account", {
     headers: { Cookie: cookie }
   }), bindings);
   assert.equal(blockedAccount.status, 403);
 
-  const confirmed = await worker.fetch(request("/api/auth/email-verification/confirm", {
+  const resent = await worker.fetch(request("/api/auth/email-verification/request", {
+    method: "POST",
+    headers: { Cookie: cookie },
+    ip: "192.0.2.42"
+  }), bindings);
+  assert.equal(resent.status, 202);
+  assert.equal(mailer.messages[1].type, "verification");
+  const resentToken = tokenFromMessage(mailer.messages[1]);
+
+  const firstTokenReplay = await worker.fetch(request("/api/auth/email-verification/confirm", {
     method: "POST",
     body: JSON.stringify({ token }),
-    ip: "192.0.2.42"
+    ip: "192.0.2.43"
+  }), bindings);
+  assert.equal(firstTokenReplay.status, 400, "resending must invalidate the previous token");
+
+  const confirmed = await worker.fetch(request("/api/auth/email-verification/confirm", {
+    method: "POST",
+    body: JSON.stringify({ token: resentToken }),
+    ip: "192.0.2.44"
   }), bindings);
   assert.equal(confirmed.status, 200);
   assert.deepEqual(await body(confirmed), { ok: true, verified: true });
