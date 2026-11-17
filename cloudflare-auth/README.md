@@ -332,3 +332,21 @@ The new `email-sender.mjs` module defines a vendor-neutral interface for a **pri
 **Next gate:** implement token routes against migration 0002, create and review a separate mailer Worker, configure a private Service Binding and provider secrets there, then apply migration 0002 through Wrangler's versioned migration workflow on the isolated preview D1 and run preview end-to-end tests. Do not apply SQL manually or deploy the new Auth Worker before the preview gate passes.
 
 Security references: [OWASP Email Validation and Verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP Forgot Password](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), and [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/wrangler-commands/). Checked 2026-11-15.
+
+
+## Email verification and password reset routes — implemented on this review branch (2026-11-17)
+
+The Auth Worker now contains the following route implementations on this branch:
+
+| Method and route | Purpose |
+|---|---|
+| `POST /api/auth/email-verification/request` | Send a one-time verification message to the signed-in account |
+| `POST /api/auth/email-verification/confirm` | Validate and consume a one-time verification token |
+| `POST /api/auth/password-reset/request` | Request a reset message without revealing whether an email address has an account |
+| `POST /api/auth/password-reset/confirm` | Set a new password, consume the token, and revoke all existing sessions |
+
+The routes store only SHA-256 token hashes, use short expirations, invalidate previous active tokens, rate-limit requests, and return generic password-reset responses for known and unknown addresses. Password reset invalidates all sessions for the account. The additive D1 migration `0002_email_verification_and_password_reset.sql` adds the verification timestamp and token tables; `schema.sql` is the corresponding full schema snapshot.
+
+Set `REQUIRE_EMAIL_VERIFICATION=true` only after the private `EMAIL_SENDER` Service Binding and migration are deployed and verified. With that flag enabled, new registrations send a verification message, login and protected account routes reject unverified users, and readiness fails closed if the mailer or token schema is unavailable. The default remains disabled until the mailer is configured.
+
+**Verification boundary as of 2026-11-17:** the implementation is on the draft review branch; automated route tests and CI are pending. The adapter uses a fake mailer in tests. No transactional email provider, private Service Binding, production/preview secret, or provider credential is configured by this change. No D1 migration was applied remotely, and no Worker was deployed. The existing PBKDF2-HMAC-SHA-256/310,000 runtime compatibility risk remains a production gate; this work does not approve or change the password KDF.
