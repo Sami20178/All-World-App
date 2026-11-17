@@ -1077,12 +1077,12 @@ async function handle(request, env) {
       authStage = "login.password_verify";
       const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
       if (!user || !passwordOk) return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
-      if (emailVerificationRequired(env) && !user.email_verified_at) {
-        return json(request, env, { error: "Bitte bestätige zuerst deine E-Mail-Adresse." }, 403);
-      }
       await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
-      return json(request, env, { user: publicUser(user) }, 200, { "Set-Cookie": sessionCookie(token) });
+      return json(request, env, {
+        user: publicUser(user),
+        emailVerificationRequired: emailVerificationRequired(env)
+      }, 200, { "Set-Cookie": sessionCookie(token) });
     }
 
     if (request.method === "GET" && path === "/api/auth/me") {
@@ -1102,7 +1102,7 @@ async function handle(request, env) {
       if (required.response) return required.response;
       const current = required.session.user;
       const rows = await db.prepare(
-        "SELECT u.id,u.username,u.email,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
+        "SELECT u.id,u.username,u.email,u.email_verified_at,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
       ).bind(current.id).all();
       const accounts = [publicUser(current), ...(rows.results || []).map(publicUser).filter(row => row.id !== current.id)];
       return json(request, env, { accounts });
@@ -1146,7 +1146,7 @@ async function handle(request, env) {
       const accountId = typeof body.accountId === "string" ? body.accountId : "";
       const allowed = await db.prepare("SELECT 1 AS ok FROM account_links WHERE user_id=? AND linked_user_id=?")
         .bind(required.session.user.id, accountId).first();
-      const target = allowed ? await db.prepare("SELECT id,username,email,created_at FROM users WHERE id=?").bind(accountId).first() : null;
+      const target = allowed ? await db.prepare("SELECT id,username,email,email_verified_at,created_at FROM users WHERE id=?").bind(accountId).first() : null;
       if (!target) return json(request, env, { error: "Dieses Konto ist nicht mit deinem aktiven Konto verbunden." }, 403);
       await db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(required.session.tokenHash).run();
       const token = await createSession(env, target.id);
