@@ -256,6 +256,43 @@ test("password reset is enumeration-resistant, single-use, and revokes existing 
   assert.equal(replay.status, 400);
 });
 
+test("password reset responses stay identical when the mailer rejects delivery", async () => {
+  const mailer = fakeMailer(503);
+  const bindings = env({ EMAIL_SENDER: mailer.binding });
+
+  const registered = await worker.fetch(request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      username: "mailer_failure_user",
+      email: "mailer-failure@example.test",
+      password: "A-long-test-password!"
+    })
+  }), bindings);
+  assert.equal(registered.status, 201);
+
+  const known = await worker.fetch(request("/api/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify({ email: "mailer-failure@example.test" }),
+    ip: "192.0.2.61"
+  }), bindings);
+  const unknown = await worker.fetch(request("/api/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify({ email: "unknown-mailer-failure@example.test" }),
+    ip: "192.0.2.62"
+  }), bindings);
+
+  assert.equal(known.status, 202);
+  assert.equal(unknown.status, 202);
+  assert.deepEqual(await body(known), await body(unknown));
+  assert.deepEqual(mailer.messages[0].type, "password-reset");
+  assert.deepEqual(mailer.messages[1], { version: 1, action: "suppress" });
+
+  const failedToken = bindings.AUTH_DB.db.prepare(
+    "SELECT consumed_at FROM password_reset_tokens WHERE user_id=(SELECT id FROM users WHERE username_normalized=?)"
+  ).get("mailer_failure_user");
+  assert.ok(failedToken?.consumed_at, "a token must be invalidated when delivery fails");
+});
+
 test("email verification and reset fail closed without the private mailer binding", async () => {
   const bindings = env();
   const registered = await worker.fetch(request("/api/auth/register", {
