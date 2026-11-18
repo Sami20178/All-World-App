@@ -2,14 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { webcrypto } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import worker from "../worker.mjs";
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
+
+const here = dirname(fileURLToPath(import.meta.url));
+const schemaSql = readFileSync(join(here, "../schema.sql"), "utf8");
 
 class FakeD1 {
   constructor() {
     this.db = new Database(":memory:");
     this.db.pragma("foreign_keys = ON");
+    this.db.exec(schemaSql);
   }
   prepare(sql) {
     const owner = this;

@@ -1,5 +1,10 @@
+import { enqueueAuthEmail, enqueueSuppressedAuthEmail, hasEmailSender } from "./email-sender.mjs";
+
 const COOKIE_NAME = "allworld.sid";
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+const EMAIL_VERIFICATION_TTL = 30 * 60 * 1000;
+const PASSWORD_RESET_TTL = 15 * 60 * 1000;
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const RATE_WINDOW = 15 * 60 * 1000;
 const PBKDF2_ITERATIONS = 310000;
 const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,32}$/;
@@ -143,6 +148,7 @@ function publicUser(row) {
     id: row.id,
     username: row.username,
     email: row.email || null,
+    emailVerified: Boolean(row.email_verified_at),
     createdAt: row.created_at
   };
 }
@@ -212,7 +218,7 @@ async function currentSession(request, env) {
   if (!token) return null;
   const tokenHash = await sha256(token);
   const row = await env.AUTH_DB.prepare(
-    "SELECT s.token_hash, s.expires_at, u.id, u.username, u.email, u.email_normalized, u.password_hash, u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
+    "SELECT s.token_hash, s.expires_at, u.id, u.username, u.email, u.email_normalized, u.email_verified_at, u.password_hash, u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
   ).bind(tokenHash).first();
   if (!row) return null;
   if (row.expires_at <= Date.now()) {
@@ -250,10 +256,79 @@ async function consumeRateLimit(request, env, action, identity, limit) {
   return Number(row && row.count) <= limit;
 }
 
+function emailVerificationRequired(env) {
+  return env.REQUIRE_EMAIL_VERIFICATION === "true";
+}
+
 async function requireSession(request, env) {
   const session = await currentSession(request, env);
   if (!session) return { response: json(request, env, { error: "Bitte melde dich an." }, 401) };
+  if (emailVerificationRequired(env) && !session.user.email_verified_at) {
+    return { response: json(request, env, { error: "Bitte bestätige zuerst deine E-Mail-Adresse." }, 403) };
+  }
   return { session };
+}
+
+async function issueEmailVerification(env, db, user) {
+  if (!hasEmailSender(env) || !user || !user.email || !user.email_normalized) return false;
+  const now = Date.now();
+  const token = randomToken(32);
+  const tokenHash = await sha256(token);
+  try {
+    await db.prepare("UPDATE email_verification_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL")
+      .bind(now, user.id).run();
+    await db.prepare("INSERT INTO email_verification_tokens(token_hash,user_id,email_normalized,expires_at,created_at,consumed_at) VALUES(?,?,?,?,?,NULL)")
+      .bind(tokenHash, user.id, user.email_normalized, now + EMAIL_VERIFICATION_TTL, now).run();
+  } catch {
+    return false;
+  }
+  const link = new URL("/account/verify", getAllowedOrigin(env));
+  link.searchParams.set("token", token);
+  const result = await enqueueAuthEmail(env, {
+    type: "verification",
+    to: user.email,
+    username: user.username,
+    url: link.toString()
+  });
+  if (!result.queued) {
+    try {
+      await db.prepare("UPDATE email_verification_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL")
+        .bind(Date.now(), tokenHash).run();
+    } catch {}
+    return false;
+  }
+  return true;
+}
+
+async function issuePasswordReset(env, db, user) {
+  if (!hasEmailSender(env) || !user || !user.email || !user.email_normalized) return false;
+  const now = Date.now();
+  const token = randomToken(32);
+  const tokenHash = await sha256(token);
+  try {
+    await db.prepare("UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL")
+      .bind(now, user.id).run();
+    await db.prepare("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at,created_at,consumed_at) VALUES(?,?,?,?,NULL)")
+      .bind(tokenHash, user.id, now + PASSWORD_RESET_TTL, now).run();
+  } catch {
+    return false;
+  }
+  const link = new URL("/account/reset-password", getAllowedOrigin(env));
+  link.searchParams.set("token", token);
+  const result = await enqueueAuthEmail(env, {
+    type: "password-reset",
+    to: user.email,
+    username: user.username,
+    url: link.toString()
+  });
+  if (!result.queued) {
+    try {
+      await db.prepare("UPDATE password_reset_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL")
+        .bind(Date.now(), tokenHash).run();
+    } catch {}
+    return false;
+  }
+  return true;
 }
 
 
@@ -756,6 +831,12 @@ async function handle(request, env) {
       }
       await ensureSchema(env.AUTH_DB);
       await env.AUTH_DB.prepare("SELECT 1 AS ok").first();
+      await env.AUTH_DB.prepare("SELECT email_verified_at FROM users LIMIT 0").all();
+      await env.AUTH_DB.prepare("SELECT token_hash FROM email_verification_tokens LIMIT 0").all();
+      await env.AUTH_DB.prepare("SELECT token_hash FROM password_reset_tokens LIMIT 0").all();
+      if (emailVerificationRequired(env) && !hasEmailSender(env)) {
+        return json(request, env, { ok: false, ready: false, error: "E-Mail-Versand ist nicht konfiguriert." }, 503);
+      }
       return json(request, env, { ok: true, ready: true, service: "all-world-auth-api" });
     } catch {
       return json(request, env, { ok: false, ready: false, error: "Authentifizierungsdatenbank ist nicht verfügbar." }, 503);
@@ -818,6 +899,9 @@ async function handle(request, env) {
       if (password.length < 8 || password.length > 72 || new TextEncoder().encode(password).length > 72) {
         return json(request, env, { error: "Das Passwort muss 8–72 Zeichen lang sein." }, 400);
       }
+      if (emailVerificationRequired(env) && !hasEmailSender(env)) {
+        return json(request, env, { error: "E-Mail-Bestätigung ist derzeit nicht verfügbar." }, 503);
+      }
       const user = {
         id: crypto.randomUUID(),
         username,
@@ -838,11 +922,138 @@ async function handle(request, env) {
         if (/UNIQUE constraint failed: users\./i.test(message)) return json(request, env, { error: "Benutzername oder E-Mail-Adresse wird bereits verwendet." }, 409);
         throw error;
       }
+      if (emailVerificationRequired(env)) {
+        const queued = await issueEmailVerification(env, db, user);
+        if (!queued) {
+          await db.prepare("DELETE FROM users WHERE id=?").bind(user.id).run();
+          return json(request, env, { error: "E-Mail-Bestätigung konnte nicht gesendet werden. Bitte versuche es später erneut." }, 503);
+        }
+      }
       authStage = "register.session";
-      authStage = "login.session";
       await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
-      return json(request, env, { user: publicUser(user) }, 201, { "Set-Cookie": sessionCookie(token) });
+      return json(request, env, {
+        user: publicUser(user),
+        emailVerificationRequired: emailVerificationRequired(env)
+      }, 201, { "Set-Cookie": sessionCookie(token) });
+    }
+
+    if (request.method === "POST" && path === "/api/auth/email-verification/request") {
+      const session = await currentSession(request, env);
+      if (!session) return json(request, env, { error: "Bitte melde dich an." }, 401);
+      const user = session.user;
+      if (!user.email || !user.email_normalized) {
+        return json(request, env, { error: "Für dieses Konto ist keine E-Mail-Adresse gespeichert." }, 400);
+      }
+      if (user.email_verified_at) return json(request, env, { ok: true, verified: true });
+      if (!hasEmailSender(env)) {
+        return json(request, env, { error: "E-Mail-Versand ist nicht konfiguriert." }, 503);
+      }
+      const ipAllowed = await consumeRateLimit(request, env, "email-verification-ip", "", 10);
+      const userAllowed = await consumeRateLimit(request, env, "email-verification-user", user.id, 3);
+      if (!ipAllowed || !userAllowed) {
+        return json(request, env, { error: "Zu viele Bestätigungsanfragen. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
+      }
+      if (!(await issueEmailVerification(env, db, user))) {
+        return json(request, env, { error: "E-Mail-Bestätigung konnte nicht gesendet werden." }, 503);
+      }
+      return json(request, env, { ok: true, queued: true }, 202);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/email-verification/confirm") {
+      let body;
+      try { body = await readJson(request); }
+      catch { return json(request, env, { error: "Ungültiges JSON." }, 400); }
+      const token = typeof body.token === "string" ? body.token : "";
+      if (!TOKEN_PATTERN.test(token)) return json(request, env, { error: "Der Bestätigungslink ist ungültig oder abgelaufen." }, 400);
+      if (!(await consumeRateLimit(request, env, "email-verification-confirm", "", 20))) {
+        return json(request, env, { error: "Zu viele Versuche. Bitte warte kurz." }, 429, { "Retry-After": "900" });
+      }
+      const now = Date.now();
+      const tokenHash = await sha256(token);
+      const row = await db.prepare("SELECT user_id,email_normalized FROM email_verification_tokens WHERE token_hash=? AND expires_at>? AND consumed_at IS NULL")
+        .bind(tokenHash, now).first();
+      if (!row) return json(request, env, { error: "Der Bestätigungslink ist ungültig oder abgelaufen." }, 400);
+      const verifiedAt = new Date(now).toISOString();
+      const results = await db.batch([
+        db.prepare("UPDATE users SET email_verified_at=? WHERE id=? AND email_normalized=? AND EXISTS (SELECT 1 FROM email_verification_tokens WHERE token_hash=? AND user_id=? AND email_normalized=? AND consumed_at IS NULL AND expires_at>?)")
+          .bind(verifiedAt, row.user_id, row.email_normalized, tokenHash, row.user_id, row.email_normalized, now),
+        db.prepare("UPDATE email_verification_tokens SET consumed_at=? WHERE token_hash=? AND user_id=? AND consumed_at IS NULL AND expires_at>?")
+          .bind(now, tokenHash, row.user_id, now)
+      ]);
+      if (results[0]?.meta?.changes !== 1 || results[1]?.meta?.changes !== 1) {
+        return json(request, env, { error: "Der Bestätigungslink ist ungültig oder abgelaufen." }, 400);
+      }
+      return json(request, env, { ok: true, verified: true });
+    }
+
+    if (request.method === "POST" && path === "/api/auth/password-reset/request") {
+      if (!hasEmailSender(env)) return json(request, env, { error: "E-Mail-Versand ist nicht konfiguriert." }, 503);
+      let body;
+      try { body = await readJson(request); }
+      catch { return json(request, env, { error: "Ungültiges JSON." }, 400); }
+      const email = typeof body.email === "string" ? body.email.trim() : "";
+      if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
+        return json(request, env, { error: "Gib eine gültige E-Mail-Adresse ein." }, 400);
+      }
+      const normalized = email.toLowerCase();
+      const ipAllowed = await consumeRateLimit(request, env, "password-reset-ip", "", 10);
+      const emailAllowed = await consumeRateLimit(request, env, "password-reset-email", normalized, 3);
+      if (!ipAllowed || !emailAllowed) {
+        return json(request, env, { error: "Zu viele Anfragen. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
+      }
+      const user = await db.prepare("SELECT id,username,email,email_normalized FROM users WHERE email_normalized=? LIMIT 1")
+        .bind(normalized).first();
+      const genericResponse = {
+        ok: true,
+        message: "Falls ein Konto existiert, wurde eine Nachricht gesendet."
+      };
+      if (!user) {
+        const suppressed = await enqueueSuppressedAuthEmail(env);
+        if (!suppressed.queued) console.warn("password_reset_suppression_delivery_failed");
+        return json(request, env, genericResponse, 202);
+      }
+      if (!(await issuePasswordReset(env, db, user))) {
+        // Keep the response identical for known and unknown addresses, including provider failures.
+        console.warn("password_reset_request_processing_failed");
+      }
+      return json(request, env, genericResponse, 202);
+    }
+
+    if (request.method === "POST" && path === "/api/auth/password-reset/confirm") {
+      let body;
+      try { body = await readJson(request); }
+      catch { return json(request, env, { error: "Ungültiges JSON." }, 400); }
+      const token = typeof body.token === "string" ? body.token : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!TOKEN_PATTERN.test(token) || password.length < 8 || password.length > 72 ||
+          new TextEncoder().encode(password).length > 72) {
+        return json(request, env, { error: "Der Link oder das neue Passwort ist ungültig." }, 400);
+      }
+      const ipAllowed = await consumeRateLimit(request, env, "password-reset-confirm-ip", "", 20);
+      const tokenAllowed = await consumeRateLimit(request, env, "password-reset-confirm-token", token, 5);
+      if (!ipAllowed || !tokenAllowed) {
+        return json(request, env, { error: "Zu viele Versuche. Bitte warte kurz." }, 429, { "Retry-After": "900" });
+      }
+      const now = Date.now();
+      const tokenHash = await sha256(token);
+      const row = await db.prepare("SELECT user_id FROM password_reset_tokens WHERE token_hash=? AND expires_at>? AND consumed_at IS NULL")
+        .bind(tokenHash, now).first();
+      if (!row) return json(request, env, { error: "Der Link oder das neue Passwort ist ungültig." }, 400);
+      const passwordHash = await hashPassword(password);
+      const results = await db.batch([
+        db.prepare("UPDATE users SET password_hash=? WHERE id=? AND EXISTS (SELECT 1 FROM password_reset_tokens WHERE token_hash=? AND user_id=? AND consumed_at IS NULL AND expires_at>?)")
+          .bind(passwordHash, row.user_id, tokenHash, row.user_id, now),
+        db.prepare("UPDATE password_reset_tokens SET consumed_at=? WHERE token_hash=? AND user_id=? AND consumed_at IS NULL AND expires_at>?")
+          .bind(now, tokenHash, row.user_id, now),
+        db.prepare("UPDATE password_reset_tokens SET consumed_at=? WHERE user_id=? AND consumed_at IS NULL")
+          .bind(now, row.user_id),
+        db.prepare("DELETE FROM sessions WHERE user_id=?").bind(row.user_id)
+      ]);
+      if (results[0]?.meta?.changes !== 1 || results[1]?.meta?.changes !== 1) {
+        return json(request, env, { error: "Der Link oder das neue Passwort ist ungültig." }, 400);
+      }
+      return json(request, env, { ok: true, message: "Dein Passwort wurde aktualisiert. Bitte melde dich erneut an." });
     }
 
     if (request.method === "POST" && path === "/api/auth/login") {
@@ -866,14 +1077,17 @@ async function handle(request, env) {
       authStage = "login.user_lookup";
       const normalized = identifier.toLowerCase();
       const user = await db.prepare(
-        "SELECT id,username,username_normalized,email,email_normalized,password_hash,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
+        "SELECT id,username,username_normalized,email,email_normalized,email_verified_at,password_hash,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
       ).bind(normalized, normalized).first();
       authStage = "login.password_verify";
       const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
       if (!user || !passwordOk) return json(request, env, { error: "Benutzername/E-Mail oder Passwort ist falsch." }, 401);
       await revokeCurrentSession(request, env);
       const token = await createSession(env, user.id);
-      return json(request, env, { user: publicUser(user) }, 200, { "Set-Cookie": sessionCookie(token) });
+      return json(request, env, {
+        user: publicUser(user),
+        emailVerificationRequired: emailVerificationRequired(env)
+      }, 200, { "Set-Cookie": sessionCookie(token) });
     }
 
     if (request.method === "GET" && path === "/api/auth/me") {
@@ -893,7 +1107,7 @@ async function handle(request, env) {
       if (required.response) return required.response;
       const current = required.session.user;
       const rows = await db.prepare(
-        "SELECT u.id,u.username,u.email,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
+        "SELECT u.id,u.username,u.email,u.email_verified_at,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
       ).bind(current.id).all();
       const accounts = [publicUser(current), ...(rows.results || []).map(publicUser).filter(row => row.id !== current.id)];
       return json(request, env, { accounts });
@@ -937,7 +1151,7 @@ async function handle(request, env) {
       const accountId = typeof body.accountId === "string" ? body.accountId : "";
       const allowed = await db.prepare("SELECT 1 AS ok FROM account_links WHERE user_id=? AND linked_user_id=?")
         .bind(required.session.user.id, accountId).first();
-      const target = allowed ? await db.prepare("SELECT id,username,email,created_at FROM users WHERE id=?").bind(accountId).first() : null;
+      const target = allowed ? await db.prepare("SELECT id,username,email,email_verified_at,created_at FROM users WHERE id=?").bind(accountId).first() : null;
       if (!target) return json(request, env, { error: "Dieses Konto ist nicht mit deinem aktiven Konto verbunden." }, 403);
       await db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(required.session.tokenHash).run();
       const token = await createSession(env, target.id);
