@@ -1004,15 +1004,20 @@ async function handle(request, env) {
       }
       const user = await db.prepare("SELECT id,username,email,email_normalized FROM users WHERE email_normalized=? LIMIT 1")
         .bind(normalized).first();
+      const genericResponse = {
+        ok: true,
+        message: "Falls ein Konto existiert, wurde eine Nachricht gesendet."
+      };
       if (!user) {
         const suppressed = await enqueueSuppressedAuthEmail(env);
-        if (!suppressed.queued) return json(request, env, { error: "Die Anfrage konnte nicht verarbeitet werden." }, 503);
-        return json(request, env, { ok: true, message: "Falls ein Konto existiert, wurde eine Nachricht gesendet." }, 202);
+        if (!suppressed.queued) console.warn("password_reset_suppression_delivery_failed");
+        return json(request, env, genericResponse, 202);
       }
       if (!(await issuePasswordReset(env, db, user))) {
-        return json(request, env, { error: "Die Anfrage konnte nicht verarbeitet werden." }, 503);
+        // Keep the response identical for known and unknown addresses, including provider failures.
+        console.warn("password_reset_request_processing_failed");
       }
-      return json(request, env, { ok: true, message: "Falls ein Konto existiert, wurde eine Nachricht gesendet." }, 202);
+      return json(request, env, genericResponse, 202);
     }
 
     if (request.method === "POST" && path === "/api/auth/password-reset/confirm") {
