@@ -135,6 +135,7 @@ function publicUser(row) {
     id: row.id,
     username: row.username,
     email: row.email || null,
+    role: row.role === "owner" ? "owner" : "member",
     createdAt: row.created_at
   };
 }
@@ -204,7 +205,7 @@ async function currentSession(request, env) {
   if (!token) return null;
   const tokenHash = await sha256(token);
   const row = await env.AUTH_DB.prepare(
-    "SELECT s.token_hash, s.expires_at, u.id, u.username, u.email, u.email_normalized, u.password_hash, u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
+    "SELECT s.token_hash, s.expires_at, u.id, u.username, u.email, u.email_normalized, u.password_hash, u.role, u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
   ).bind(tokenHash).first();
   if (!row) return null;
   if (row.expires_at <= Date.now()) {
@@ -858,7 +859,7 @@ async function handle(request, env) {
       authStage = "login.user_lookup";
       const normalized = identifier.toLowerCase();
       const user = await db.prepare(
-        "SELECT id,username,username_normalized,email,email_normalized,password_hash,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
+        "SELECT id,username,username_normalized,email,email_normalized,password_hash,role,created_at FROM users WHERE username_normalized=? OR email_normalized=? LIMIT 1"
       ).bind(normalized, normalized).first();
       authStage = "login.password_verify";
       const passwordOk = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
@@ -885,7 +886,7 @@ async function handle(request, env) {
       if (required.response) return required.response;
       const current = required.session.user;
       const rows = await db.prepare(
-        "SELECT u.id,u.username,u.email,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
+        "SELECT u.id,u.username,u.email,u.role,u.created_at FROM users u JOIN account_links l ON l.linked_user_id=u.id WHERE l.user_id=? ORDER BY u.username_normalized"
       ).bind(current.id).all();
       const accounts = [publicUser(current), ...(rows.results || []).map(publicUser).filter(row => row.id !== current.id)];
       return json(request, env, { accounts });
@@ -907,7 +908,7 @@ async function handle(request, env) {
       if (!linkIpAllowed || !linkIdentityAllowed) {
         return json(request, env, { error: "Zu viele Versuche. Bitte warte 15 Minuten." }, 429, { "Retry-After": "900" });
       }
-      const target = await db.prepare("SELECT id,username,email,password_hash,created_at FROM users WHERE username_normalized=?")
+      const target = await db.prepare("SELECT id,username,email,password_hash,role,created_at FROM users WHERE username_normalized=?")
         .bind(username.toLowerCase()).first();
       const passwordOk = await verifyPassword(password, target ? target.password_hash : DUMMY_HASH);
       if (!target || !passwordOk) return json(request, env, { error: "Kontodaten stimmen nicht. Bestätige das andere Konto mit seinem Passwort." }, 401);
@@ -929,7 +930,7 @@ async function handle(request, env) {
       const accountId = typeof body.accountId === "string" ? body.accountId : "";
       const allowed = await db.prepare("SELECT 1 AS ok FROM account_links WHERE user_id=? AND linked_user_id=?")
         .bind(required.session.user.id, accountId).first();
-      const target = allowed ? await db.prepare("SELECT id,username,email,created_at FROM users WHERE id=?").bind(accountId).first() : null;
+      const target = allowed ? await db.prepare("SELECT id,username,email,role,created_at FROM users WHERE id=?").bind(accountId).first() : null;
       if (!target) return json(request, env, { error: "Dieses Konto ist nicht mit deinem aktiven Konto verbunden." }, 403);
       await db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(required.session.tokenHash).run();
       const token = await createSession(env, target.id);
