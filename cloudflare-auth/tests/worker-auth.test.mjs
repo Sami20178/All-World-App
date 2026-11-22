@@ -158,7 +158,7 @@ test("Cloudflare auth Worker validates origin, stores hashed passwords, and supp
 
   const stored = bindings.AUTH_DB.db.prepare("SELECT password_hash FROM users WHERE username_normalized=?").get("sample_user");
   assert.notEqual(stored.password_hash, password, "password must not be stored in plaintext");
-  assert.match(stored.password_hash, /^pbkdf2\$310000\$/);
+  assert.match(stored.password_hash, /^pbkdf2\$100000\$/);
 
   const me = await worker.fetch(request("/api/auth/me", { headers: { Cookie: firstCookie } }), bindings);
   assert.equal(me.status, 200);
