@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT,
   email_normalized TEXT,
   password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
   created_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_normalized_idx
