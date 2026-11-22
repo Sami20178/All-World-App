@@ -140,7 +140,7 @@ function publicUser(row) {
     id: row.id,
     username: row.username,
     email: row.email || null,
-    role: row.role === "owner" ? "owner" : "member",
+    role: row.role === "owner" ? "owner" : row.role === "admin_star_plus" ? "admin_star_plus" : "member",
     createdAt: row.created_at
   };
 }
