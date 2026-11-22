@@ -115,6 +115,11 @@ async function ensureSchema(db) {
   for (const statement of SCHEMA) {
     await db.prepare(statement).run();
   }
+  try {
+    await db.prepare("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'").run();
+  } catch (error) {
+    if (!String(error && error.message || error).toLowerCase().includes("duplicate column")) throw error;
+  }
 }
 
 async function readJson(request) {
