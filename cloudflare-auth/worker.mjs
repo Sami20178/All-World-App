@@ -1,10 +1,10 @@
 const COOKIE_NAME = "allworld.sid";
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 const RATE_WINDOW = 15 * 60 * 1000;
-const PBKDF2_ITERATIONS = 310000;
+const PBKDF2_ITERATIONS = 100000;
 const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,32}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const DUMMY_HASH = "pbkdf2$310000$YWFhYWFhYWFhYWFhYWFhYQ$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const DUMMY_HASH = "pbkdf2$100000$YWFhYWFhYWFhYWFhYWFhYQ$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, username_normalized TEXT NOT NULL UNIQUE, email TEXT, email_normalized TEXT, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)",
@@ -23,7 +23,9 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS oauth_nonces (state_hash TEXT PRIMARY KEY, nonce_hash TEXT NOT NULL, expires_at INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS oauth_nonces_expiry_idx ON oauth_nonces(expires_at)"
 ];
-const schemaPromises = new WeakMap();
+// D1 statements are intentionally run inside each request. Do not cache
+// a Promise across Worker requests: Cloudflare can end the request that
+// created it before another request awaits it.
 
 function getAllowedOrigin(env) {
   try {
@@ -110,18 +112,8 @@ function randomToken(size = 32) {
 
 async function ensureSchema(db) {
   if (!db || typeof db.prepare !== "function") throw new Error("AUTH_DB binding missing");
-  let promise = schemaPromises.get(db);
-  if (!promise) {
-    promise = (async () => {
-      for (const statement of SCHEMA) await db.prepare(statement).run();
-    })();
-    schemaPromises.set(db, promise);
-  }
-  try {
-    await promise;
-  } catch (error) {
-    schemaPromises.delete(db);
-    throw error;
+  for (const statement of SCHEMA) {
+    await db.prepare(statement).run();
   }
 }
 
@@ -172,7 +164,7 @@ async function verifyPassword(password, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
   const iterations = Number(parts[1]);
-  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 600000) return false;
+  if (!Number.isInteger(iterations) || iterations !== 100000) return false;
   let salt;
   let expected;
   try {
