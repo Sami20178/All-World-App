@@ -111,6 +111,61 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     }
   }
 
+
+  // Attachments are stored as binary chunks in the existing D1 database.
+  const uploadMatch = path.match(/^\\/api\\/messenger\\/chats\\/([A-Za-z0-9-]+)\\/attachments$/);
+  if (uploadMatch && request.method === "POST") {
+    const conversationId = uploadMatch[1];
+    const member = await db.prepare("SELECT 1 AS ok FROM messenger_participants WHERE conversation_id=? AND user_id=?").bind(conversationId,userId).first();
+    if (!member) return json(request, env, { error: "Chat nicht gefunden." }, 404);
+    if (!(await consumeRateLimit(request, env, "messenger-upload", userId, 20))) return json(request, env, { error: "Zu viele Uploads. Bitte warte kurz." }, 429);
+    let form;
+    try { form = await request.formData(); } catch { return json(request, env, { error: "Upload konnte nicht gelesen werden." }, 400); }
+    const file = form.get("file");
+    if (!file || typeof file.arrayBuffer !== "function") return json(request, env, { error: "Keine Datei ausgewählt." }, 400);
+    if (file.size < 1 || file.size > 3 * 1024 * 1024) return json(request, env, { error: "Dateien dürfen maximal 3 MB groß sein." }, 413);
+    const safeName = String(file.name || "Datei").replace(/[\\\\/\\r\\n\\0]/g, "_").slice(0, 180) || "Datei";
+    const contentType = String(file.type || "application/octet-stream").slice(0, 120);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const attachmentId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const chunkSize = 64 * 1024;
+    const statements = [];
+    for (let offset = 0, index = 0; offset < bytes.length; offset += chunkSize, index++) {
+      statements.push(db.prepare("INSERT INTO messenger_attachment_chunks(attachment_id,chunk_index,chunk_data) VALUES(?,?,?)")
+        .bind(attachmentId,index,bytes.slice(offset,Math.min(offset+chunkSize,bytes.length))));
+    }
+    try {
+      if (statements.length) await db.batch(statements);
+      await db.prepare("INSERT INTO messenger_messages(id,conversation_id,sender_id,body,created_at) VALUES(?,?,?,?,?)")
+        .bind(messageId,conversationId,userId,"📎 "+safeName,now).run();
+      await db.prepare("INSERT INTO messenger_attachments(id,conversation_id,message_id,uploader_id,file_name,content_type,size_bytes,created_at) VALUES(?,?,?,?,?,?,?,?)")
+        .bind(attachmentId,conversationId,messageId,userId,safeName,contentType,bytes.length,now).run();
+      await db.prepare("UPDATE messenger_conversations SET updated_at=? WHERE id=?").bind(now,conversationId).run();
+    } catch (error) {
+      await db.prepare("DELETE FROM messenger_attachment_chunks WHERE attachment_id=?").bind(attachmentId).run().catch(()=>{});
+      throw error;
+    }
+    return json(request, env, { attachment: { id: attachmentId, messageId, fileName: safeName, contentType, sizeBytes: bytes.length, createdAt: now, mine: true } }, 201);
+  }
+
+  const attachmentMatch = path.match(/^\\/api\\/messenger\\/attachments\\/([A-Za-z0-9-]+)$/);
+  if (attachmentMatch && request.method === "GET") {
+    const attachment = await db.prepare("SELECT id,conversation_id,message_id,file_name,content_type,size_bytes,created_at FROM messenger_attachments WHERE id=?").bind(attachmentMatch[1]).first();
+    if (!attachment) return json(request, env, { error: "Datei nicht gefunden." }, 404);
+    const member = await db.prepare("SELECT 1 AS ok FROM messenger_participants WHERE conversation_id=? AND user_id=?").bind(attachment.conversation_id,userId).first();
+    if (!member) return json(request, env, { error: "Datei nicht gefunden." }, 404);
+    const chunks = await db.prepare("SELECT chunk_data FROM messenger_attachment_chunks WHERE attachment_id=? ORDER BY chunk_index ASC").bind(attachment.id).all();
+    const parts = (chunks.results || []).map(row => row.chunk_data instanceof Uint8Array ? row.chunk_data : new Uint8Array(row.chunk_data || []));
+    const bytes = new Uint8Array(parts.reduce((sum,part)=>sum+part.length,0));
+    let offset = 0;
+    for (const part of parts) { bytes.set(part,offset); offset += part.length; }
+    let binary = "";
+    for (let i=0;i<bytes.length;i+=0x8000) binary += String.fromCharCode(...bytes.subarray(i,Math.min(i+0x8000,bytes.length)));
+    return json(request, env, { attachment: { id: attachment.id, fileName: attachment.file_name, contentType: attachment.content_type, sizeBytes: attachment.size_bytes, base64: btoa(binary) } });
+  }
+
   if (request.method === "POST" && path === "/api/messenger/calls") {
     let body;
     try { body = await readJson(request); } catch { return json(request, env, { error: "Ungültiger Anruf." }, 400); }
