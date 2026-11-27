@@ -1268,6 +1268,16 @@ test("Worldmessenger group ranks cannot be escalated through usernames and PINs 
   });
   assert.equal(adminEscalation.status, 403, "a username must not grant an administrator rank");
 
+  const starCreatorCookie = await register("role_star_creator", "role-star-creator@example.test", "192.0.2.84");
+  bindings.AUTH_DB.db.prepare("UPDATE users SET role='star_creator' WHERE username_normalized='role_star_creator'").run();
+  const starCreatorMe = await call("/api/auth/me", "GET", starCreatorCookie);
+  assert.equal((await body(starCreatorMe)).user.role, "star_creator",
+    "the public account response must preserve supported intermediate ranks");
+  const starCreatorGroup = await call("/api/messenger/groups", "POST", starCreatorCookie, {
+    title: "Star Creator Group", visibility: "private", pin: "2345", minRank: "star_creator"
+  });
+  assert.equal(starCreatorGroup.status, 201, "a trusted star_creator role may create its rank-gated group");
+
   const roleOwnerCookie = await register("role_owner", "role-owner@example.test", "192.0.2.83");
   bindings.AUTH_DB.db.prepare("UPDATE users SET role='owner' WHERE username_normalized='role_owner'").run();
   const created = await call("/api/messenger/groups", "POST", roleOwnerCookie, {
