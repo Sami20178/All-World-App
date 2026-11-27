@@ -1100,3 +1100,79 @@ test("login endpoint enforces the per-IP attempt limit across different identifi
     "the IP-level counter must remain persistent across different account identifiers"
   );
 });
+
+test("Worldmessanger invitations require acceptance before online chat and support call signalling", async () => {
+  const bindings = env();
+  const register = async (username, email, ip) => {
+    const response = await worker.fetch(request("/api/auth/register", {
+      method: "POST",
+      headers: { "CF-Connecting-IP": ip },
+      body: JSON.stringify({ username, email, password: "A-long-test-password!" })
+    }), bindings);
+    assert.equal(response.status, 201);
+    return cookieFrom(response);
+  };
+  const aliceCookie = await register("messenger_alice", "messenger-alice@example.test", "192.0.2.61");
+  const bobCookie = await register("messenger_bob", "messenger-bob@example.test", "192.0.2.62");
+  const call = (path, method, cookie, payload) => worker.fetch(request(path, {
+    method,
+    headers: { Cookie: cookie },
+    ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
+  }), bindings);
+
+  const invite = await call("/api/messenger/invitations", "POST", aliceCookie, { username: "messenger_bob" });
+  assert.equal(invite.status, 201);
+  const inviteData = await body(invite);
+  const invitationId = inviteData.invitation.id;
+
+  const incoming = await call("/api/messenger/invitations", "GET", bobCookie);
+  assert.equal((await body(incoming)).invitations[0].direction, "incoming");
+  assert.equal((await call("/api/messenger/chats", "GET", aliceCookie)).status, 200);
+  assert.equal((await body(await call("/api/messenger/chats", "GET", aliceCookie))).chats.length, 0,
+    "a pending invitation must not create an open chat");
+
+  const wrongPerson = await call("/api/messenger/invitations/" + invitationId + "/respond", "POST", aliceCookie, { action: "accept" });
+  assert.equal(wrongPerson.status, 404, "only the invited person may respond");
+
+  const accepted = await call("/api/messenger/invitations/" + invitationId + "/respond", "POST", bobCookie, { action: "accept" });
+  assert.equal(accepted.status, 200);
+  const conversationId = (await body(accepted)).conversationId;
+  assert.ok(conversationId);
+  assert.equal((await body(await call("/api/messenger/chats", "GET", aliceCookie))).chats.length, 1);
+  assert.equal((await body(await call("/api/messenger/chats", "GET", bobCookie))).chats.length, 1);
+
+  const sent = await call("/api/messenger/chats/" + conversationId + "/messages", "POST", aliceCookie, { text: "Hallo aus Worldmessanger!" });
+  assert.equal(sent.status, 201);
+  const received = await call("/api/messenger/chats/" + conversationId + "/messages", "GET", bobCookie);
+  const messages = (await body(received)).messages;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, "Hallo aus Worldmessanger!");
+  assert.equal(messages[0].mine, false);
+
+  const strangerCookie = await register("messenger_eve", "messenger-eve@example.test", "192.0.2.63");
+  const forbidden = await call("/api/messenger/chats/" + conversationId + "/messages", "GET", strangerCookie);
+  assert.equal(forbidden.status, 404, "users outside the conversation must not read its messages");
+
+  const createdCall = await call("/api/messenger/calls", "POST", aliceCookie, {
+    conversationId, mediaType: "audio", offerSdp: "v=0\\r\\no=test-offer"
+  });
+  assert.equal(createdCall.status, 201);
+  const callId = (await body(createdCall)).call.id;
+  const ringing = await call("/api/messenger/calls/incoming", "GET", bobCookie);
+  assert.equal((await body(ringing)).calls[0].id, callId);
+  const answered = await call("/api/messenger/calls/" + callId + "/respond", "POST", bobCookie, {
+    action: "accept", answerSdp: "v=0\\r\\no=test-answer"
+  });
+  assert.equal(answered.status, 200);
+  const callState = await call("/api/messenger/calls/" + callId, "GET", aliceCookie);
+  assert.equal((await body(callState)).call.status, "accepted");
+
+  const ice = await call("/api/messenger/calls/" + callId + "/ice", "POST", aliceCookie, {
+    candidate: { candidate: "candidate:test", sdpMid: "0", sdpMLineIndex: 0 }
+  });
+  assert.equal(ice.status, 201);
+  const remoteIce = await call("/api/messenger/calls/" + callId, "GET", bobCookie);
+  assert.equal((await body(remoteIce)).candidates.length, 1);
+  const ended = await call("/api/messenger/calls/" + callId + "/respond", "POST", aliceCookie, { action: "end" });
+  assert.equal(ended.status, 200);
+});
