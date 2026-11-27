@@ -9,8 +9,9 @@ function normalizedRank(user) {
 function rankAllowed(user, minimum) {
   return GROUP_RANKS.includes(minimum) && GROUP_RANK_SCORES[normalizedRank(user)] >= GROUP_RANK_SCORES[minimum];
 }
-async function groupPinHash(crypto, salt, pin) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin));
+async function groupPinHash(crypto, env, salt, pin) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(env.RATE_LIMIT_SECRET || "")), {name:"HMAC",hash:"SHA-256"}, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(salt + ":" + pin));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
 }
 
@@ -100,7 +101,7 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     if (!creator || !rankAllowed(creator,minRank)) return json(request, env, { error: "Dein Rang reicht nicht aus, um diesen Mindest-Rang festzulegen." }, 403);
     if (!(await consumeRateLimit(request, env, "messenger-group-create", userId, 8))) return json(request, env, { error: "Zu viele neue Chats. Bitte warte kurz." }, 429);
     const now = new Date().toISOString(), id = crypto.randomUUID(), salt = crypto.randomUUID();
-    const pinHash = await groupPinHash(crypto,salt,pin);
+    const pinHash = await groupPinHash(crypto,env,salt,pin);
     await db.prepare("INSERT INTO messenger_conversations(id,kind,dm_key,title,created_by,created_at,updated_at) VALUES(?,'group',NULL,?,?,?,?)")
       .bind(id,title,userId,now,now).run();
     await db.prepare("INSERT INTO messenger_group_settings(conversation_id,visibility,pin_salt,pin_hash,min_rank,created_at) VALUES(?,?,?,?,?,?)")
@@ -134,7 +135,7 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     if (member) return json(request, env, { error: "Du bist bereits Mitglied dieses Chats." }, 409);
     const applicant = await db.prepare("SELECT id,username,role FROM users WHERE id=?").bind(userId).first();
     if (!rankAllowed(applicant,group.min_rank)) return json(request, env, { error: "Dein Rang reicht für diesen Chat nicht aus. Erforderlich: "+group.min_rank }, 403);
-    const digest = await groupPinHash(crypto,group.pin_salt,pin);
+    const digest = await groupPinHash(crypto,env,group.pin_salt,pin);
     if (digest !== group.pin_hash) return json(request, env, { error: "Die PIN ist falsch." }, 403);
     const now = new Date().toISOString(), requestId = crypto.randomUUID();
     await db.prepare("INSERT INTO messenger_group_requests(id,conversation_id,requester_id,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(conversation_id,requester_id) DO UPDATE SET status='pending',updated_at=excluded.updated_at")
