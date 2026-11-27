@@ -1050,11 +1050,27 @@ async function handle(request, env) {
       const passwordOk = password && password.length <= 72 && await verifyPassword(password, required.session.user.password_hash);
       if (!passwordOk) return json(request, env, { error: "Gib zur Bestätigung dein aktuelles Passwort ein." }, 401);
       const userId = required.session.user.id;
-      await db.prepare("DELETE FROM user_data WHERE user_id=?").bind(userId).run();
-      await db.prepare("DELETE FROM account_links WHERE user_id=? OR linked_user_id=?").bind(userId, userId).run();
-      await db.prepare("DELETE FROM oauth_identities WHERE user_id=?").bind(userId).run();
-      await db.prepare("DELETE FROM sessions WHERE user_id=?").bind(userId).run();
-      await db.prepare("DELETE FROM users WHERE id=?").bind(userId).run();
+      // Preserve conversations for their remaining participants. A conversation's
+      // creator is also its current owner, so transfer that reference before the
+      // account row is deleted. Empty conversations are removed in the same batch.
+      // D1 batch is transactional: any failed statement rolls back the full deletion.
+      await db.batch([
+        db.prepare(
+          "UPDATE messenger_conversations SET created_by=(" +
+          "SELECT p.user_id FROM messenger_participants p " +
+          "WHERE p.conversation_id=messenger_conversations.id AND p.user_id<>? " +
+          "ORDER BY p.joined_at ASC,p.user_id ASC LIMIT 1) " +
+          "WHERE created_by=? AND EXISTS(" +
+          "SELECT 1 FROM messenger_participants p " +
+          "WHERE p.conversation_id=messenger_conversations.id AND p.user_id<>?)"
+        ).bind(userId,userId,userId),
+        db.prepare("DELETE FROM messenger_conversations WHERE created_by=?").bind(userId),
+        db.prepare("DELETE FROM user_data WHERE user_id=?").bind(userId),
+        db.prepare("DELETE FROM account_links WHERE user_id=? OR linked_user_id=?").bind(userId,userId),
+        db.prepare("DELETE FROM oauth_identities WHERE user_id=?").bind(userId),
+        db.prepare("DELETE FROM sessions WHERE user_id=?").bind(userId),
+        db.prepare("DELETE FROM users WHERE id=?").bind(userId)
+      ]);
       return json(request, env, { ok: true, deleted: true }, 200, { "Set-Cookie": expiredCookie() });
     }
 
