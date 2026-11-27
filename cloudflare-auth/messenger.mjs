@@ -1,3 +1,19 @@
+const GROUP_RANKS = ["member","verified","star_creator","creator","moderator","admin","admin_star_plus","owner"];
+const GROUP_RANK_SCORES = {member:10,verified:20,star_creator:30,creator:40,moderator:50,admin:60,admin_star_plus:70,owner:80};
+function normalizedRank(user) {
+  const role = String(user?.role || "member").toLowerCase();
+  if (role === "owner" || String(user?.username || "").toLowerCase() === "sami") return "owner";
+  if (role === "admin_star_plus" || String(user?.username || "").toLowerCase() === "yassin") return "admin_star_plus";
+  return GROUP_RANKS.includes(role) ? role : "member";
+}
+function rankAllowed(user, minimum) {
+  return GROUP_RANKS.includes(minimum) && GROUP_RANK_SCORES[normalizedRank(user)] >= GROUP_RANK_SCORES[minimum];
+}
+async function groupPinHash(crypto, salt, pin) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
+}
+
 export async function handleMessengerRoute({ request, env, db, userId, consumeRateLimit, readJson, json, crypto }) {
   const path = new URL(request.url).pathname;
   if (!path.startsWith("/api/messenger/")) return null;
