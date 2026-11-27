@@ -1176,3 +1176,66 @@ test("Worldmessanger invitations require acceptance before online chat and suppo
   const ended = await call("/api/messenger/calls/" + callId + "/respond", "POST", aliceCookie, { action: "end" });
   assert.equal(ended.status, 200);
 });
+
+
+test("Worldmessenger group chats require a PIN, rank eligibility, and owner approval", async () => {
+  const bindings = env();
+  const register = async (username, email, ip) => {
+    const response = await worker.fetch(request("/api/auth/register", {
+      method: "POST",
+      headers: { "CF-Connecting-IP": ip },
+      body: JSON.stringify({ username, email, password: "A-long-test-password!" })
+    }), bindings);
+    assert.equal(response.status, 201);
+    return cookieFrom(response);
+  };
+  const ownerCookie = await register("group_owner", "group-owner@example.test", "192.0.2.71");
+  const memberCookie = await register("group_member", "group-member@example.test", "192.0.2.72");
+  const call = (path, method, cookie, payload) => worker.fetch(request(path, {
+    method,
+    headers: { Cookie: cookie },
+    ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
+  }), bindings);
+
+  const deniedRank = await call("/api/messenger/groups", "POST", memberCookie, {
+    title: "Star Creator only", visibility: "public", pin: "123456", minRank: "star_creator"
+  });
+  assert.equal(deniedRank.status, 403, "members cannot create a group that requires a higher rank");
+
+  const created = await call("/api/messenger/groups", "POST", ownerCookie, {
+    title: "Public Test Group", visibility: "public", pin: "123456", minRank: "member"
+  });
+  assert.equal(created.status, 201);
+  const group = (await body(created)).chat;
+  assert.equal(group.kind, "group");
+  assert.equal(group.visibility, "public");
+
+  const discovered = await call("/api/messenger/groups/discover", "GET", memberCookie);
+  assert.ok((await body(discovered)).groups.some(item => item.id === group.id));
+
+  const wrongPin = await call("/api/messenger/groups/" + group.id + "/request", "POST", memberCookie, { pin: "000000" });
+  assert.equal(wrongPin.status, 403, "incorrect PIN must not create a join request");
+
+  const requested = await call("/api/messenger/groups/" + group.id + "/request", "POST", memberCookie, { pin: "123456" });
+  assert.equal(requested.status, 201);
+  const requestId = (await body(requested)).request.id;
+
+  const inbox = await call("/api/messenger/group-requests", "GET", ownerCookie);
+  assert.equal((await body(inbox)).requests[0].direction, "incoming");
+
+  const accepted = await call("/api/messenger/group-requests/" + requestId + "/respond", "POST", ownerCookie, { action: "accept" });
+  assert.equal(accepted.status, 200);
+  const memberChats = await call("/api/messenger/chats", "GET", memberCookie);
+  assert.ok((await body(memberChats)).chats.some(item => item.id === group.id));
+
+  const privateCreated = await call("/api/messenger/groups", "POST", ownerCookie, {
+    title: "Private Test Group", visibility: "private", pin: "654321", minRank: "member"
+  });
+  assert.equal(privateCreated.status, 201);
+  const privateGroup = (await body(privateCreated)).chat;
+  const privateDiscover = await call("/api/messenger/groups/discover", "GET", memberCookie);
+  assert.ok(!(await body(privateDiscover)).groups.some(item => item.id === privateGroup.id),
+    "private groups must not appear in public discovery");
+  const privateRequest = await call("/api/messenger/groups/" + privateGroup.id + "/request", "POST", memberCookie, { pin: "654321" });
+  assert.equal(privateRequest.status, 201, "private groups can be requested with their shared chat ID and PIN");
+});
