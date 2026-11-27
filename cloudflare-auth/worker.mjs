@@ -160,7 +160,7 @@ function publicUser(row) {
     id: row.id,
     username: row.username,
     email: row.email || null,
-    role: row.role === "owner" ? "owner" : row.role === "admin_star_plus" ? "admin_star_plus" : "member",
+    role: ["member","verified","star_creator","creator","moderator","admin","admin_star_plus","owner"].includes(String(row.role || "member").toLowerCase()) ? String(row.role || "member").toLowerCase() : "member",
     createdAt: row.created_at
   };
 }
