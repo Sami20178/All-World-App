@@ -122,11 +122,11 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     if (!member) return json(request, env, { error: "Chat nicht gefunden." }, 404);
     const peer = await db.prepare("SELECT p.user_id,u.username FROM messenger_participants p JOIN users u ON u.id=p.user_id WHERE p.conversation_id=? AND p.user_id<>? LIMIT 1").bind(conversationId,userId).first();
     if (!peer) return json(request, env, { error: "Für Anrufe wird ein Einzelchat benötigt." }, 400);
+    const now = new Date().toISOString(), id = crypto.randomUUID();
     await db.prepare("UPDATE messenger_calls SET status='missed',updated_at=?,ended_at=? WHERE conversation_id=? AND status='ringing' AND created_at<?")
       .bind(now,now,conversationId,new Date(Date.now()-120000).toISOString()).run();
     const active = await db.prepare("SELECT id FROM messenger_calls WHERE conversation_id=? AND status IN ('ringing','accepted')").bind(conversationId).first();
     if (active) return json(request, env, { error: "In diesem Chat läuft bereits ein Anruf." }, 409);
-    const now = new Date().toISOString(), id = crypto.randomUUID();
     await db.prepare("INSERT INTO messenger_calls(id,conversation_id,caller_id,callee_id,media_type,status,offer_sdp,created_at,updated_at) VALUES(?,?,?,?,?,'ringing',?,?,?)")
       .bind(id,conversationId,userId,peer.user_id,mediaType,offerSdp,now,now).run();
     return json(request, env, { call: { id, status: "ringing", mediaType, peerUsername: peer.username } }, 201);
