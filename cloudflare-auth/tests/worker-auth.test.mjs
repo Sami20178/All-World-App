@@ -1245,6 +1245,71 @@ test("Worldmessenger group chats require a PIN, rank eligibility, and owner appr
   assert.equal(privateRequest.status, 201, "private groups can be requested with their shared chat ID and PIN");
 });
 
+test("Worldmessenger group ranks cannot be escalated through usernames and PINs use the server HMAC secret", async () => {
+  const bindings = env();
+  const register = async (username, email, ip) => {
+    const response = await worker.fetch(request("/api/auth/register", {
+      method: "POST",
+      headers: { "CF-Connecting-IP": ip },
+      body: JSON.stringify({ username, email, password: "A-long-test-password!" })
+    }), bindings);
+    assert.equal(response.status, 201);
+    return cookieFrom(response);
+  };
+  const call = (path, method, cookie, payload) => worker.fetch(request(path, {
+    method,
+    headers: { Cookie: cookie },
+    ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
+  }), bindings);
+
+  const samiCookie = await register("sami", "sami-rank@example.test", "192.0.2.81");
+  const yassinCookie = await register("yassin", "yassin-rank@example.test", "192.0.2.82");
+  const ownerEscalation = await call("/api/messenger/groups", "POST", samiCookie, {
+    title: "Testgruppe", visibility: "private", pin: "1234", minRank: "owner"
+  });
+  assert.equal(ownerEscalation.status, 403, "a username must not grant the owner rank");
+  const adminEscalation = await call("/api/messenger/groups", "POST", yassinCookie, {
+    title: "Testgruppe", visibility: "private", pin: "1234", minRank: "admin_star_plus"
+  });
+  assert.equal(adminEscalation.status, 403, "a username must not grant an administrator rank");
+
+  const starCreatorCookie = await register("role_star_creator", "role-star-creator@example.test", "192.0.2.84");
+  bindings.AUTH_DB.db.prepare("UPDATE users SET role='star_creator' WHERE username_normalized='role_star_creator'").run();
+  const starCreatorMe = await call("/api/auth/me", "GET", starCreatorCookie);
+  assert.equal((await body(starCreatorMe)).user.role, "star_creator",
+    "the public account response must preserve supported intermediate ranks");
+  const starCreatorGroup = await call("/api/messenger/groups", "POST", starCreatorCookie, {
+    title: "Star Creator Group", visibility: "private", pin: "2345", minRank: "star_creator"
+  });
+  assert.equal(starCreatorGroup.status, 201, "a trusted star_creator role may create its rank-gated group");
+
+  const roleOwnerCookie = await register("role_owner", "role-owner@example.test", "192.0.2.83");
+  bindings.AUTH_DB.db.prepare("UPDATE users SET role='owner' WHERE username_normalized='role_owner'").run();
+  const created = await call("/api/messenger/groups", "POST", roleOwnerCookie, {
+    title: "Sichere Testgruppe", visibility: "private", pin: "123456", minRank: "owner"
+  });
+  assert.equal(created.status, 201, "a trusted database role may grant the configured rank");
+  const chat = (await body(created)).chat;
+  const stored = bindings.AUTH_DB.db.prepare(
+    "SELECT pin_salt,pin_hash FROM messenger_group_settings WHERE conversation_id=?"
+  ).get(chat.id);
+  assert.ok(stored);
+
+  const key = await webcrypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(bindings.RATE_LIMIT_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const mac = await webcrypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(stored.pin_salt + ":123456")
+  );
+  const expected = Array.from(new Uint8Array(mac), byte => byte.toString(16).padStart(2,"0")).join("");
+  assert.equal(stored.pin_hash, expected, "the stored PIN hash must use the server-side HMAC secret");
+});
 
 test("account deletion transfers created conversations and preserves the remaining participant's history", async () => {
   const bindings = env();
