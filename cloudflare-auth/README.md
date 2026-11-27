@@ -38,6 +38,26 @@ POST /api/auth/logout
 GET /api/auth/linked
 POST /api/auth/link
 POST /api/auth/switch
+
+### Worldmessanger
+
+Worldmessanger uses the authenticated account session and the same production D1 database. Invitations are consent-based: a direct conversation is created only after the invited account accepts.
+
+- `GET /api/messenger/invitations` — own incoming and outgoing invitations
+- `POST /api/messenger/invitations` — invite an existing account by exact username
+- `POST /api/messenger/invitations/:id/respond` — accept or decline an incoming invitation
+- `GET /api/messenger/chats` — list accepted conversations
+- `GET /api/messenger/chats/:id/messages` — read messages for a conversation participant
+- `POST /api/messenger/chats/:id/messages` — send a text message (up to 4,000 characters)
+- `GET /api/messenger/calls` — recent call history
+- `GET /api/messenger/calls/incoming` — pending incoming calls
+- `POST /api/messenger/calls` — start an audio/video call with WebRTC offer signalling
+- `GET /api/messenger/calls/:id` — read call state and remote ICE candidates
+- `POST /api/messenger/calls/:id/respond` — accept, decline, or end a call
+- `POST /api/messenger/calls/:id/ice` — exchange WebRTC ICE candidates
+
+The browser stores a local cache and queues unsent text messages while offline. Local-only chats remain on that device and are not delivered to other accounts. Online text messages and call signalling require a valid All World login. WebRTC uses a public STUN server; without a TURN relay, calls may not connect on every restrictive network. Messages are stored by the API and are not end-to-end encrypted in this version. Group chats, file sharing, voice notes, push notifications, and a TURN relay are not implemented yet.
+
 GET /api/account
 GET, POST /api/account/data
 PUT, DELETE /api/account/data/:id
