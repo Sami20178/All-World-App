@@ -2,8 +2,6 @@ const GROUP_RANKS = ["member","verified","star_creator","creator","moderator","a
 const GROUP_RANK_SCORES = {member:10,verified:20,star_creator:30,creator:40,moderator:50,admin:60,admin_star_plus:70,owner:80};
 function normalizedRank(user) {
   const role = String(user?.role || "member").toLowerCase();
-  if (role === "owner" || String(user?.username || "").toLowerCase() === "sami") return "owner";
-  if (role === "admin_star_plus" || String(user?.username || "").toLowerCase() === "yassin") return "admin_star_plus";
   return GROUP_RANKS.includes(role) ? role : "member";
 }
 function rankAllowed(user, minimum) {
