@@ -88,10 +88,11 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     const member = await db.prepare("SELECT 1 AS ok FROM messenger_participants WHERE conversation_id=? AND user_id=?").bind(conversationId,userId).first();
     if (!member) return json(request, env, { error: "Chat nicht gefunden." }, 404);
     if (request.method === "GET") {
-      const rows = await db.prepare("SELECT id,sender_id,body,created_at FROM messenger_messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT 80")
+      const rows = await db.prepare("SELECT m.id,m.sender_id,m.body,m.created_at,a.id AS attachment_id,a.file_name,a.content_type,a.size_bytes FROM messenger_messages m LEFT JOIN messenger_attachments a ON a.message_id=m.id WHERE m.conversation_id=? ORDER BY m.created_at DESC LIMIT 80")
         .bind(conversationId).all();
       const messages = (rows.results || []).reverse().map(row => ({
-        id: row.id, senderId: row.sender_id, text: row.body, createdAt: row.created_at, mine: row.sender_id === userId
+        id: row.id, senderId: row.sender_id, text: row.body, createdAt: row.created_at, mine: row.sender_id === userId,
+        attachment: row.attachment_id ? { id: row.attachment_id, fileName: row.file_name, contentType: row.content_type, sizeBytes: row.size_bytes } : null
       }));
       await db.prepare("UPDATE messenger_participants SET last_read_at=? WHERE conversation_id=? AND user_id=?")
         .bind(new Date().toISOString(),conversationId,userId).run();
@@ -137,14 +138,16 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
         .bind(attachmentId,index,bytes.slice(offset,Math.min(offset+chunkSize,bytes.length))));
     }
     try {
-      if (statements.length) await db.batch(statements);
       await db.prepare("INSERT INTO messenger_messages(id,conversation_id,sender_id,body,created_at) VALUES(?,?,?,?,?)")
         .bind(messageId,conversationId,userId,"📎 "+safeName,now).run();
       await db.prepare("INSERT INTO messenger_attachments(id,conversation_id,message_id,uploader_id,file_name,content_type,size_bytes,created_at) VALUES(?,?,?,?,?,?,?,?)")
         .bind(attachmentId,conversationId,messageId,userId,safeName,contentType,bytes.length,now).run();
+      if (statements.length) await db.batch(statements);
       await db.prepare("UPDATE messenger_conversations SET updated_at=? WHERE id=?").bind(now,conversationId).run();
     } catch (error) {
       await db.prepare("DELETE FROM messenger_attachment_chunks WHERE attachment_id=?").bind(attachmentId).run().catch(()=>{});
+      await db.prepare("DELETE FROM messenger_attachments WHERE id=?").bind(attachmentId).run().catch(()=>{});
+      await db.prepare("DELETE FROM messenger_messages WHERE id=?").bind(messageId).run().catch(()=>{});
       throw error;
     }
     return json(request, env, { attachment: { id: attachmentId, messageId, fileName: safeName, contentType, sizeBytes: bytes.length, createdAt: now, mine: true } }, 201);
