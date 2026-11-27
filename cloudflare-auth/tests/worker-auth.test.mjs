@@ -18,12 +18,17 @@ class FakeD1 {
       bind(...values) { params = values; return statement; },
       async first() { return owner.db.prepare(sql).get(...params) || null; },
       async all() { return { results: owner.db.prepare(sql).all(...params) }; },
-      async run() {
+      runSync() {
         const result = owner.db.prepare(sql).run(...params);
         return { success: true, meta: { changes: result.changes } };
-      }
+      },
+      async run() { return statement.runSync(); }
     };
     return statement;
+  }
+  async batch(statements) {
+    const execute = this.db.transaction(() => statements.map(statement => statement.runSync()));
+    return execute();
   }
 }
 
@@ -1238,4 +1243,81 @@ test("Worldmessenger group chats require a PIN, rank eligibility, and owner appr
     "private groups must not appear in public discovery");
   const privateRequest = await call("/api/messenger/groups/" + privateGroup.id + "/request", "POST", memberCookie, { pin: "654321" });
   assert.equal(privateRequest.status, 201, "private groups can be requested with their shared chat ID and PIN");
+});
+
+
+test("account deletion transfers created conversations and preserves the remaining participant's history", async () => {
+  const bindings = env();
+  const password = "A-long-test-password!";
+  const register = async (username, email, ip) => {
+    const response = await worker.fetch(request("/api/auth/register", {
+      method: "POST",
+      headers: { "CF-Connecting-IP": ip },
+      body: JSON.stringify({ username, email, password })
+    }), bindings);
+    assert.equal(response.status, 201);
+    return cookieFrom(response);
+  };
+
+  const deletingCookie = await register("account_to_delete", "delete-account@example.test", "192.0.2.91");
+  const remainingCookie = await register("remaining_member", "remaining-member@example.test", "192.0.2.92");
+  const remainingMe = await worker.fetch(request("/api/auth/me", {
+    headers: { Cookie: remainingCookie }
+  }), bindings);
+  const remainingUserId = (await body(remainingMe)).user.id;
+
+  const invitationResponse = await worker.fetch(request("/api/messenger/invitations", {
+    method: "POST",
+    headers: { Cookie: remainingCookie },
+    body: JSON.stringify({ username: "account_to_delete" })
+  }), bindings);
+  assert.equal(invitationResponse.status, 201);
+  const invitationId = (await body(invitationResponse)).invitation.id;
+
+  const accepted = await worker.fetch(request("/api/messenger/invitations/" + invitationId + "/respond", {
+    method: "POST",
+    headers: { Cookie: deletingCookie },
+    body: JSON.stringify({ action: "accept" })
+  }), bindings);
+  assert.equal(accepted.status, 200);
+  const conversationId = (await body(accepted)).conversationId;
+
+  const message = await worker.fetch(request("/api/messenger/chats/" + conversationId + "/messages", {
+    method: "POST",
+    headers: { Cookie: remainingCookie },
+    body: JSON.stringify({ text: "Diese Nachricht bleibt erhalten." })
+  }), bindings);
+  assert.equal(message.status, 201);
+
+  const deletingMe = await worker.fetch(request("/api/auth/me", {
+    headers: { Cookie: deletingCookie }
+  }), bindings);
+  const deletingUserId = (await body(deletingMe)).user.id;
+
+  const deleted = await worker.fetch(request("/api/account", {
+    method: "DELETE",
+    headers: { Cookie: deletingCookie },
+    body: JSON.stringify({ password })
+  }), bindings);
+  assert.equal(deleted.status, 200);
+  assert.match(deleted.headers.get("Set-Cookie") || "", /Max-Age=0/);
+
+  const conversation = bindings.AUTH_DB.db.prepare(
+    "SELECT created_by FROM messenger_conversations WHERE id=?"
+  ).get(conversationId);
+  assert.equal(conversation.created_by, remainingUserId, "ownership must move to a remaining participant");
+
+  const participants = bindings.AUTH_DB.db.prepare(
+    "SELECT user_id FROM messenger_participants WHERE conversation_id=?"
+  ).all(conversationId);
+  assert.deepEqual(participants.map(row => row.user_id), [remainingUserId]);
+
+  const preservedMessage = bindings.AUTH_DB.db.prepare(
+    "SELECT body,sender_id FROM messenger_messages WHERE conversation_id=?"
+  ).get(conversationId);
+  assert.equal(preservedMessage.body, "Diese Nachricht bleibt erhalten.");
+  assert.equal(preservedMessage.sender_id, remainingUserId);
+
+  assert.equal(bindings.AUTH_DB.db.prepare("SELECT 1 FROM users WHERE id=?").get(deletingUserId), undefined);
+  assert.equal(bindings.AUTH_DB.db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id=?").get(deletingUserId).count, 0);
 });
