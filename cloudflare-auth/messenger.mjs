@@ -114,7 +114,7 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
 
 
   // Attachments are stored as binary chunks in the existing D1 database.
-  const uploadMatch = path.match(/^\\/api\\/messenger\\/chats\\/([A-Za-z0-9-]+)\\/attachments$/);
+  const uploadMatch = path.match(/^\/api\/messenger\/chats\/([A-Za-z0-9-]+)\/attachments$/);
   if (uploadMatch && request.method === "POST") {
     const conversationId = uploadMatch[1];
     const member = await db.prepare("SELECT 1 AS ok FROM messenger_participants WHERE conversation_id=? AND user_id=?").bind(conversationId,userId).first();
@@ -125,7 +125,7 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     const file = form.get("file");
     if (!file || typeof file.arrayBuffer !== "function") return json(request, env, { error: "Keine Datei ausgewählt." }, 400);
     if (file.size < 1 || file.size > 3 * 1024 * 1024) return json(request, env, { error: "Dateien dürfen maximal 3 MB groß sein." }, 413);
-    const safeName = String(file.name || "Datei").replace(/[\\\\/\\r\\n\\0]/g, "_").slice(0, 180) || "Datei";
+    const safeName = String(file.name || "Datei").replace(/[\/\\\r\n\0]/g, "_").slice(0, 180) || "Datei";
     const contentType = String(file.type || "application/octet-stream").slice(0, 120);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const attachmentId = crypto.randomUUID();
@@ -153,7 +153,7 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     return json(request, env, { attachment: { id: attachmentId, messageId, fileName: safeName, contentType, sizeBytes: bytes.length, createdAt: now, mine: true } }, 201);
   }
 
-  const attachmentMatch = path.match(/^\\/api\\/messenger\\/attachments\\/([A-Za-z0-9-]+)$/);
+  const attachmentMatch = path.match(/^\/api\/messenger\/attachments\/([A-Za-z0-9-]+)$/);
   if (attachmentMatch && request.method === "GET") {
     const attachment = await db.prepare("SELECT id,conversation_id,message_id,file_name,content_type,size_bytes,created_at FROM messenger_attachments WHERE id=?").bind(attachmentMatch[1]).first();
     if (!attachment) return json(request, env, { error: "Datei nicht gefunden." }, 404);
