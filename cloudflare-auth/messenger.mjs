@@ -84,16 +84,102 @@ export async function handleMessengerRoute({ request, env, db, userId, consumeRa
     return json(request, env, { ok: true, status: "accepted", conversationId: conversation.id });
   }
 
+
+  if (request.method === "POST" && path === "/api/messenger/groups") {
+    let body;
+    try { body = await readJson(request); } catch { return json(request, env, { error: "Ungültige Gruppenchat-Daten." }, 400); }
+    const title = typeof body.title === "string" ? body.title.trim().replace(/\s+/g," ").slice(0,60) : "";
+    const visibility = body.visibility === "public" ? "public" : body.visibility === "private" ? "private" : "";
+    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    const minRank = typeof body.minRank === "string" ? body.minRank : "member";
+    if (title.length < 2) return json(request, env, { error: "Der Chatname muss mindestens 2 Zeichen lang sein." }, 400);
+    if (!visibility) return json(request, env, { error: "Wähle Privat oder Öffentlich." }, 400);
+    if (!/^[0-9]{4,8}$/.test(pin)) return json(request, env, { error: "Die PIN muss aus 4 bis 8 Ziffern bestehen." }, 400);
+    if (!GROUP_RANKS.includes(minRank)) return json(request, env, { error: "Dieser Rang ist nicht gültig." }, 400);
+    const creator = await db.prepare("SELECT id,username,role FROM users WHERE id=?").bind(userId).first();
+    if (!creator || !rankAllowed(creator,minRank)) return json(request, env, { error: "Dein Rang reicht nicht aus, um diesen Mindest-Rang festzulegen." }, 403);
+    if (!(await consumeRateLimit(request, env, "messenger-group-create", userId, 8))) return json(request, env, { error: "Zu viele neue Chats. Bitte warte kurz." }, 429);
+    const now = new Date().toISOString(), id = crypto.randomUUID(), salt = crypto.randomUUID();
+    const pinHash = await groupPinHash(crypto,salt,pin);
+    await db.prepare("INSERT INTO messenger_conversations(id,kind,dm_key,title,created_by,created_at,updated_at) VALUES(?,'group',NULL,?,?,?,?)")
+      .bind(id,title,userId,now,now).run();
+    await db.prepare("INSERT INTO messenger_group_settings(conversation_id,visibility,pin_salt,pin_hash,min_rank,created_at) VALUES(?,?,?,?,?,?)")
+      .bind(id,visibility,salt,pinHash,minRank,now).run();
+    await db.prepare("INSERT INTO messenger_participants(conversation_id,user_id,joined_at) VALUES(?,?,?)").bind(id,userId,now).run();
+    return json(request, env, { chat: { id,title,kind:"group",visibility,minRank,createdAt:now } }, 201);
+  }
+
+  if (request.method === "GET" && path === "/api/messenger/groups/discover") {
+    const rows = await db.prepare(
+      "SELECT c.id,c.title,c.created_at,s.visibility,s.min_rank,u.username AS owner_username," +
+      "(SELECT COUNT(*) FROM messenger_participants p WHERE p.conversation_id=c.id) AS member_count," +
+      "(SELECT r.status FROM messenger_group_requests r WHERE r.conversation_id=c.id AND r.requester_id=? LIMIT 1) AS request_status " +
+      "FROM messenger_conversations c JOIN messenger_group_settings s ON s.conversation_id=c.id JOIN users u ON u.id=c.created_by " +
+      "WHERE c.kind='group' AND s.visibility='public' AND NOT EXISTS(SELECT 1 FROM messenger_participants p WHERE p.conversation_id=c.id AND p.user_id=?) " +
+      "ORDER BY c.updated_at DESC LIMIT 50"
+    ).bind(userId,userId).all();
+    return json(request, env, { groups:(rows.results||[]).map(row=>({id:row.id,title:row.title,visibility:row.visibility,minRank:row.min_rank,ownerUsername:row.owner_username,memberCount:row.member_count,requestStatus:row.request_status||null,createdAt:row.created_at})) });
+  }
+
+  const groupRequestMatch = path.match(new RegExp("^/api/messenger/groups/([A-Za-z0-9-]+)/request$"));
+  if (request.method === "POST" && groupRequestMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return json(request, env, { error: "Ungültige Beitrittsanfrage." }, 400); }
+    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    if (!/^[0-9]{4,8}$/.test(pin)) return json(request, env, { error: "Gib die 4- bis 8-stellige Chat-PIN ein." }, 400);
+    if (!(await consumeRateLimit(request, env, "messenger-group-join", userId, 8))) return json(request, env, { error: "Zu viele Versuche. Bitte warte kurz." }, 429);
+    const group = await db.prepare("SELECT c.id,c.title,c.created_by,s.visibility,s.pin_salt,s.pin_hash,s.min_rank FROM messenger_conversations c JOIN messenger_group_settings s ON s.conversation_id=c.id WHERE c.id=? AND c.kind='group'").bind(groupRequestMatch[1]).first();
+    if (!group || (group.visibility !== "public" && group.created_by === userId)) return json(request, env, { error: "Dieser Gruppenchat wurde nicht gefunden." }, 404);
+    const member = await db.prepare("SELECT 1 AS ok FROM messenger_participants WHERE conversation_id=? AND user_id=?").bind(group.id,userId).first();
+    if (member) return json(request, env, { error: "Du bist bereits Mitglied dieses Chats." }, 409);
+    const applicant = await db.prepare("SELECT id,username,role FROM users WHERE id=?").bind(userId).first();
+    if (!rankAllowed(applicant,group.min_rank)) return json(request, env, { error: "Dein Rang reicht für diesen Chat nicht aus. Erforderlich: "+group.min_rank }, 403);
+    const digest = await groupPinHash(crypto,group.pin_salt,pin);
+    if (digest !== group.pin_hash) return json(request, env, { error: "Die PIN ist falsch." }, 403);
+    const now = new Date().toISOString(), requestId = crypto.randomUUID();
+    await db.prepare("INSERT INTO messenger_group_requests(id,conversation_id,requester_id,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(conversation_id,requester_id) DO UPDATE SET status='pending',updated_at=excluded.updated_at")
+      .bind(requestId,group.id,userId,now,now).run();
+    const saved = await db.prepare("SELECT id FROM messenger_group_requests WHERE conversation_id=? AND requester_id=?").bind(group.id,userId).first();
+    return json(request, env, { request:{id:saved.id,conversationId:group.id,title:group.title,status:"pending"} }, 201);
+  }
+
+  if (request.method === "GET" && path === "/api/messenger/group-requests") {
+    const rows = await db.prepare(
+      "SELECT r.id,r.conversation_id,r.requester_id,r.status,r.created_at,c.title,c.created_by,u.username AS requester_username " +
+      "FROM messenger_group_requests r JOIN messenger_conversations c ON c.id=r.conversation_id JOIN users u ON u.id=r.requester_id " +
+      "WHERE (c.created_by=? AND r.status='pending') OR r.requester_id=? ORDER BY r.created_at DESC LIMIT 80"
+    ).bind(userId,userId).all();
+    return json(request, env, { requests:(rows.results||[]).map(row=>({id:row.id,conversationId:row.conversation_id,title:row.title,username:row.requester_username,status:row.status,direction:row.requester_id===userId?"outgoing":"incoming",createdAt:row.created_at})) });
+  }
+
+  const groupRespondMatch = path.match(new RegExp("^/api/messenger/group-requests/([A-Za-z0-9-]+)/respond$"));
+  if (request.method === "POST" && groupRespondMatch) {
+    let body;
+    try { body = await readJson(request); } catch { return json(request, env, { error: "Ungültige Antwort." }, 400); }
+    if (body.action !== "accept" && body.action !== "decline") return json(request, env, { error: "Wähle Annehmen oder Ablehnen." }, 400);
+    const row = await db.prepare("SELECT r.id,r.conversation_id,r.requester_id,r.status,c.created_by,s.min_rank FROM messenger_group_requests r JOIN messenger_conversations c ON c.id=r.conversation_id JOIN messenger_group_settings s ON s.conversation_id=c.id WHERE r.id=?").bind(groupRespondMatch[1]).first();
+    if (!row || row.created_by !== userId) return json(request, env, { error: "Anfrage nicht gefunden." }, 404);
+    if (row.status !== "pending") return json(request, env, { error: "Diese Anfrage wurde bereits beantwortet." }, 409);
+    const now = new Date().toISOString();
+    if (body.action === "accept") {
+      const applicant = await db.prepare("SELECT id,username,role FROM users WHERE id=?").bind(row.requester_id).first();
+      if (!rankAllowed(applicant,row.min_rank)) return json(request, env, { error: "Der Rang der Person reicht nicht mehr aus." }, 403);
+      await db.prepare("INSERT OR IGNORE INTO messenger_participants(conversation_id,user_id,joined_at) VALUES(?,?,?)").bind(row.conversation_id,row.requester_id,now).run();
+    }
+    await db.prepare("UPDATE messenger_group_requests SET status=?,updated_at=? WHERE id=? AND status='pending'").bind(body.action==="accept"?"accepted":"declined",now,row.id).run();
+    return json(request, env, { ok:true,status:body.action==="accept"?"accepted":"declined",conversationId:row.conversation_id });
+  }
+
   if (request.method === "GET" && path === "/api/messenger/chats") {
     const rows = await db.prepare(
-      "SELECT c.id,c.kind,c.title,c.updated_at," +
+      "SELECT c.id,c.kind,c.title,c.updated_at,s.visibility,s.min_rank," +
       "(SELECT u.username FROM messenger_participants p JOIN users u ON u.id=p.user_id WHERE p.conversation_id=c.id AND p.user_id<>? LIMIT 1) AS other_username," +
       "(SELECT m.body FROM messenger_messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message," +
       "(SELECT m.created_at FROM messenger_messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at " +
-      "FROM messenger_conversations c JOIN messenger_participants mine ON mine.conversation_id=c.id AND mine.user_id=? ORDER BY c.updated_at DESC LIMIT 100"
+      "FROM messenger_conversations c JOIN messenger_participants mine ON mine.conversation_id=c.id AND mine.user_id=? LEFT JOIN messenger_group_settings s ON s.conversation_id=c.id ORDER BY c.updated_at DESC LIMIT 100"
     ).bind(userId,userId).all();
     return json(request, env, { chats: (rows.results || []).map(row => ({
-      id: row.id, kind: row.kind, title: row.title || row.other_username || "Gruppe",
+      id: row.id, kind: row.kind, title: row.title || row.other_username || "Gruppe", visibility: row.visibility || null, minRank: row.min_rank || "member",
       updatedAt: row.updated_at, lastMessage: row.last_message || "", lastMessageAt: row.last_message_at || null
     })) });
   }
