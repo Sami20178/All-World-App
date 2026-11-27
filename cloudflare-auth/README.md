@@ -56,7 +56,7 @@ Worldmessanger uses the authenticated account session and the same production D1
 - `POST /api/messenger/calls/:id/respond` — accept, decline, or end a call
 - `POST /api/messenger/calls/:id/ice` — exchange WebRTC ICE candidates
 
-The browser stores a local cache and queues unsent text messages while offline. Local-only chats remain on that device and are not delivered to other accounts. Online text messages and call signalling require a valid All World login. WebRTC uses a public STUN server; without a TURN relay, calls may not connect on every restrictive network. Messages are stored by the API and are not end-to-end encrypted in this version. Group chats, file sharing, voice notes, push notifications, and a TURN relay are not implemented yet.
+The browser stores a local cache and queues unsent text messages while offline. Local-only chats remain on that device and are not delivered to other accounts. Online text messages and call signalling require a valid All World login. WebRTC uses a public STUN server; without a TURN relay, calls may not connect on every restrictive network. Messages are stored by the API and are not end-to-end encrypted in this version. Group chats support private/public visibility, server-HMAC-protected PINs, minimum-rank checks, and owner-approved join requests. Voice notes, push notifications, and a TURN relay are not implemented yet.
 
 GET /api/account
 GET, POST /api/account/data
